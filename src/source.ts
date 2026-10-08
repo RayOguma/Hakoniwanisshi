@@ -32,8 +32,13 @@ export class SourcePanel {
 
   /** 開いたばかりの場所まで送る */
   reveal(areaId: string) {
-    const target = this.el.querySelector(`[data-area="${areaId}"]`);
-    target?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    const target = this.el.querySelector<HTMLElement>(`[data-area="${areaId}"]`);
+    if (target) {
+      // 上に貼りついている見出し（view-source: index.html）に、場所の名前が隠れないよう、その分だけ下に
+      const head = this.el.querySelector<HTMLElement>('.src-head')?.offsetHeight ?? 0;
+      const top = target.getBoundingClientRect().top - this.el.getBoundingClientRect().top;
+      this.el.scrollTo({ top: this.el.scrollTop + top - head - 8, behavior: 'smooth' });
+    }
     target?.classList.add('flash');
     setTimeout(() => target?.classList.remove('flash'), 1600);
   }

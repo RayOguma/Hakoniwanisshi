@@ -1,5 +1,6 @@
 // ページの形（データ）。ソースのパネルに出す字と、ページに当てる本物の CSS は、どちらもここから作る。
 // 書き換えられるのは CSS の値だけ（HTML と、住人の顔の文字には鍵がかかっている）
+import type { Line } from './story';
 
 export interface Prop {
   name: string;
@@ -27,6 +28,8 @@ export interface Area {
   /** HTML の行（日記のコメントもここ）。書き換えられない */
   html: string[];
   css: Rule[];
+  /** はじめてソースでこの場所を見たときの、主人公の声（日記を読んで思うこと） */
+  notice?: Line[];
 }
 
 /** 書き換えの前の値（「元に戻す」に使う） */

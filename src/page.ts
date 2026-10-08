@@ -54,6 +54,29 @@ nav span.on { border-color: #e8a0b8; color: #5a4a3e; }
 }
 @keyframes drop { from { transform: translateY(0); opacity: 1; } to { transform: translateY(70px); opacity: 0; } }
 
+/* クロスの看板「立入禁止」。重なりの順番は、ページの CSS の z-index で決まる（アップタイムが裏で寝ている） */
+.sign {
+  position: absolute; right: 70px; top: 256px; width: 104px; height: 72px;
+  display: grid; place-items: center; background: #f6eedc; border: 3px solid #b89a72; border-radius: 6px;
+  font-size: 15px; font-weight: 800; letter-spacing: 0.15em; color: #b0503c; box-shadow: 0 3px 0 rgba(120, 90, 60, 0.25);
+}
+.sign::after {
+  content: ''; position: absolute; left: 50%; top: 100%; width: 8px; height: 40px; margin: 3px 0 0 -4px;
+  background: #b89a72; border-radius: 0 0 3px 3px;
+}
+/* クロスは、吹き出しのかわりに、小さな看板（札）をひょこっと出す */
+.bubble.board {
+  padding: 4px 12px; background: #f6eedc; border: 3px solid #b89a72; border-radius: 5px;
+  font-size: 13px; font-weight: 800; letter-spacing: 0.12em; color: #b0503c;
+  box-shadow: 0 2px 0 rgba(120, 90, 60, 0.25); animation: board-pop 0.35s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.bubble.board::after {
+  left: 50%; bottom: -15px; width: 5px; height: 12px; margin-left: -2.5px;
+  border: none; background: #b89a72; border-radius: 0 0 2px 2px;
+}
+@keyframes board-pop { from { transform: translate(-50%, -30%) scale(0.5); opacity: 0; } }
+/* オーバーフローの吹き出しは、枠からはみ出す */
+.bubble.spill { width: 110px; max-width: none; white-space: nowrap; }
 /* マージのお城。まわりのお堀は、お城の箱の border（線。ページの CSS で決まる）。堀があるあいだは、だれも渡れない */
 .castle {
   position: relative; width: 440px; height: 240px; margin: 64px auto 0; border-radius: 56px;
@@ -131,8 +154,10 @@ footer { margin-top: 26px; text-align: center; font-size: 11px; color: #b0a498; 
 .mark::before { top: 0; height: 17px; border-radius: 5px 5px 4px 4px / 5px 5px 7px 7px; }
 .mark::after { bottom: 0; height: 7px; width: 7px; left: 1.5px; border-radius: 50%; }
 @keyframes bob { to { transform: translate(-50%, -5px); } }
+/* 吹き出しは、住人とは別の、いちばん手前の層に出す（ほかの子や物に隠れないように）。位置は、毎こま、しゃべる子の頭の上に合わせる */
+.bubbles { position: absolute; inset: 0; z-index: 100; pointer-events: none; }
 .bubble {
-  position: absolute; left: 50%; bottom: ${S + 14}px; transform: translateX(-50%);
+  position: absolute; left: 0; top: 0; transform: translate(-50%, -100%);
   max-width: 220px; width: max-content; padding: 6px 12px; background: #fff; border: 2px solid #4a4540; border-radius: 12px;
   font-size: 12px; line-height: 1.5; color: #4a4540; pointer-events: none; animation: pop 0.25s ease;
 }
@@ -141,7 +166,7 @@ footer { margin-top: 26px; text-align: center; font-size: 11px; color: #b0a498; 
   border: 6px solid transparent; border-top-color: #4a4540; border-bottom: none;
 }
 .bubble.out { opacity: 0; transition: opacity 0.4s ease; }
-@keyframes pop { from { transform: translateX(-50%) scale(0.6); opacity: 0; } }
+@keyframes pop { from { transform: translate(-50%, -100%) scale(0.6); opacity: 0; } }
 
 `;
 
@@ -167,6 +192,8 @@ interface Mover {
   hold?: boolean;
   /** 演出で急ぐときの速さ（ピクセル/秒） */
   rush?: number;
+  /** 物の裏に隠れている（かけあいに出ない） */
+  hidden?: boolean;
   asleep?: boolean;
   /** ワーカーの、前の位置（向きを決めるため） */
   last?: { x: number; y: number };
@@ -179,19 +206,29 @@ export class Page {
   private world!: HTMLElement;
   private rain: HTMLElement;
   private castle: HTMLElement;
+  private sign!: HTMLElement;
   /** しゃべっている子に寄るときの、拡大の割合（1 はふつう） */
   private zoom = 1;
   /** ワーカーが走る道（お堀のまわり）。お城の位置から作る @keyframes run */
   private runStyle: HTMLStyleElement;
   private movers = new Map<string, Mover>();
+  /** 吹き出しの層と、いま出ている吹き出し（住人ごと） */
+  private bubbleLayer = div('bubbles');
+  private bubbles = new Map<string, HTMLElement>();
+  /** 会話の窓で答えているあいだ、出しっぱなしにする札 */
+  private heldBoard: { id: string; el: HTMLElement } | null = null;
   private mouse: { x: number; y: number } | null = null;
   private talking = new Set<string>();
+  /** 住人が、はじめの位置についたら（最初のこまのあと）、かなう */
+  ready: Promise<void>;
   /** 雨もりが直るまで、アップタイムは軒下で寝ている */
   uptimeAtEaves = true;
   /** ページの左はし（幅が変わってページが動いたら、住人もいっしょに動かす） */
   private pageLeft = 0;
   /** お城の位置（ソースを開いてページの幅が変わると、上の段が折り返して、お城が上下にも動く） */
   private castleAt: { x: number; y: number } | null = null;
+  /** マージとエコーが会えた（問題4のあと）。二人いっしょに歩く */
+  private together = false;
 
   constructor(
     host: HTMLElement,
@@ -217,6 +254,7 @@ export class Page {
       <div class="garden" id="home">
         <div class="house"><div class="roof"></div><div class="walls"></div></div>
         <div class="rain"></div>
+        <div class="sign">立入禁止</div>
       </div>
       <section class="sec" id="residents"><h2>住人たち</h2><div class="cards"></div></section>
       <div class="castle"><div class="keep"></div><div class="flag"></div></div>
@@ -225,7 +263,7 @@ export class Page {
       <footer>visitors <span class="counter">000127</span> ・ 最終更新 2012/02/</footer>
     `;
     this.world = div('world');
-    this.world.append(this.page);
+    this.world.append(this.page, this.bubbleLayer);
     this.root.append(this.world);
     this.fillSections();
     for (const n of this.page.querySelectorAll<HTMLElement>('nav span')) {
@@ -236,6 +274,7 @@ export class Page {
     }
     this.rain = this.page.querySelector('.rain')!;
     this.castle = this.page.querySelector('.castle')!;
+    this.sign = this.page.querySelector('.sign')!;
     for (let i = 0; i < 6; i++) {
       const d = document.createElement('i');
       d.style.left = `${(i * 7) % 40}px`;
@@ -243,6 +282,8 @@ export class Page {
       this.rain.append(d);
     }
     for (const r of RESIDENTS) this.addResident(r);
+    // はじめの位置は、最初のこまで決まる（addResident）。その次のこまで、ついたことにする
+    this.ready = new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
 
     this.world.addEventListener('mousemove', (e) => {
       // 寄って拡大しているときは、拡大の分を戻して、世界の中の座標にする
@@ -353,11 +394,25 @@ export class Page {
       w: [0, 0],
       m: [0, 0],
       e: [0, 0],
+      x: [0, 0],
+      o: [0, 0],
     };
     [m.x, m.y] = spots[m.r.id];
     if (m.r.id === 'm') {
       const i = this.castleBox().inner;
       [m.x, m.y] = [i.x + i.w / 2 - S / 2, i.y + i.h / 2 - S / 2];
+    }
+    if (m.r.id === 'x') {
+      // クロスは、看板の左に立っている
+      const s = this.signBox();
+      [m.x, m.y] = [s.x - S - 12, s.y + 14];
+      m.hold = true;
+    }
+    if (m.r.id === 'o') {
+      // オーバーフローは、問題5で、ページの端から走ってくるまで、いない
+      m.el.style.display = 'none';
+      m.hidden = true;
+      m.hold = true;
     }
     if (m.r.id === 'e') {
       // お堀の左の外（ワーカーの走る道よりも外）に立って、お城のほうを向いている
@@ -387,7 +442,7 @@ export class Page {
    */
   private followCastle() {
     const c = this.castleBox();
-    if (this.castleAt) {
+    if (this.castleAt && !this.together) {
       const dx = c.x - this.castleAt.x;
       const dy = c.y - this.castleAt.y;
       if (dx || dy) {
@@ -443,6 +498,29 @@ export class Page {
     this.runStyle.textContent = `@keyframes run { ${frames.join(' ')} }`;
   }
 
+  /** クロスの看板の位置（世界の中の座標） */
+  private signBox() {
+    const g = this.gardenBox();
+    const el = this.sign;
+    return { x: g.x + el.offsetLeft, y: g.y + el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
+  }
+
+  /** 二人が近くにいるか（かけあいをするか）。隠れている子・話している子は、だめ */
+  near(a: string, b: string, dist: number) {
+    const ma = this.movers.get(a);
+    const mb = this.movers.get(b);
+    if (!ma || !mb || ma.hidden || mb.hidden || this.talking.has(a) || this.talking.has(b)) return false;
+    const pa = a === 'w' ? this.workerPos(ma) : ma;
+    const pb = b === 'w' ? this.workerPos(mb) : mb;
+    return Math.hypot(pa.x - pb.x, pa.y - pb.y) < dist;
+  }
+
+  /** その子が、いまページに出ているか */
+  shown(id: string) {
+    const m = this.movers.get(id);
+    return !!m && !m.hidden;
+  }
+
   /** 庭の位置（世界の中の座標） */
   private gardenBox() {
     const g = this.page.querySelector('.garden') as HTMLElement;
@@ -454,6 +532,7 @@ export class Page {
     const W = this.world.clientWidth - S;
     const H = this.world.clientHeight - S;
     this.followCastle();
+    this.placeBubbles();
     for (const m of this.movers.values()) {
       if (m.r.id === 'w') {
         this.stepWorker(m);
@@ -533,8 +612,16 @@ export class Page {
       m.ty = clamp(m.y + (Math.random() - 0.5) * 100, 0, H);
       return;
     }
-    // マージは、お城の中を、うろうろする
-    if (id === 'm') {
+    // エコーは、会えたあとは、マージのそばを、ゆっくりついて歩く
+    if (id === 'e' && this.together) {
+      const mm = this.movers.get('m')!;
+      m.tx = clamp(mm.x - 60 + (Math.random() - 0.5) * 40, 0, W);
+      m.ty = clamp(mm.y + (Math.random() - 0.5) * 50, 0, H);
+      m.wait = 0.8 + Math.random() * 1.5;
+      return;
+    }
+    // マージは、お堀があるあいだは、お城の中を、うろうろする
+    if (id === 'm' && this.castleBox().river) {
       const i = this.castleBox().inner;
       m.tx = i.x + 6 + Math.random() * (i.w - S - 12);
       m.ty = i.y + 6 + Math.random() * (i.h - S - 12);
@@ -605,6 +692,11 @@ export class Page {
     this.makeRunPath();
     // 屋根がずれているか、傾いていると、雨もり
     this.rain.style.display = roofFixed(this.model) ? 'none' : '';
+    // 住人どうし・住人と物の重なりの順番は、ページの CSS の z-index で決まる（住人の箱ごと、その順番にする）
+    for (const m of this.movers.values()) {
+      const z = getComputedStyle(m.body).zIndex;
+      m.el.style.zIndex = z === 'auto' ? '' : z;
+    }
   }
 
   /** しゃべる子のところへ、ページを送って、少し寄る（null で、寄るのをやめる） */
@@ -630,10 +722,20 @@ export class Page {
   /** 話している子は、こちらを向いて止まる */
   setTalking(ids: string[]) {
     this.talking = new Set(ids);
+    // 札を出していた子が話し終えたら、札をしまう
+    const held = this.heldBoard;
+    if (held && !this.talking.has(held.id)) {
+      this.heldBoard = null;
+      held.el.classList.add('out');
+      setTimeout(() => {
+        held.el.remove();
+        if (this.bubbles.get(held.id) === held.el) this.bubbles.delete(held.id);
+      }, 400);
+    }
     for (const [id, m] of this.movers) {
       m.el.classList.toggle('talking', this.talking.has(id));
-      // ひとりのときは笑っていない子も、話すときは、にこにこする
-      if (m.r.aloneFace) m.faceText.textContent = this.talking.has(id) ? m.r.face : m.r.aloneFace;
+      // ひとりのときは笑っていない子も、話すときは、にこにこする（エコーは、マージと会えたあとは、いつも）
+      if (m.r.aloneFace) m.faceText.textContent = this.talking.has(id) || (id === 'e' && this.together) ? m.r.face : m.r.aloneFace;
     }
     if (this.talking.has('w')) this.movers.get('w')!.angle = 0;
   }
@@ -647,14 +749,46 @@ export class Page {
   }
 
   /** 吹き出しで、ひとりごと */
-  bubble(id: string, text: string, ms = 3200) {
+  bubble(id: string, text: string, ms = 3200, evenHidden = false) {
     const m = this.movers.get(id);
-    if (!m || this.talking.has(id)) return;
-    m.body.querySelector('.bubble')?.remove();
-    const b = Object.assign(div('bubble'), { textContent: text });
-    m.body.append(b);
+    // 話している子・物の裏に隠れている子は、吹き出しを出さない（演出で、わざと出すときは別）
+    if (!m || (m.hidden && !evenHidden) || this.talking.has(id)) return;
+    this.bubbles.get(id)?.remove();
+    const b = this.makeBubble(id, text);
+    this.bubbleLayer.append(b);
+    this.bubbles.set(id, b);
+    this.placeBubbles();
     setTimeout(() => b.classList.add('out'), ms);
-    setTimeout(() => b.remove(), ms + 500);
+    setTimeout(() => {
+      b.remove();
+      if (this.bubbles.get(id) === b) this.bubbles.delete(id);
+    }, ms + 500);
+  }
+
+  /** 吹き出し（クロスは札、オーバーフローは、はみ出す吹き出し） */
+  private makeBubble(id: string, text: string) {
+    if (id === 'x') return Object.assign(div('bubble board'), { textContent: boardText(text) });
+    return Object.assign(div(id === 'o' ? 'bubble spill' : 'bubble'), { textContent: text });
+  }
+
+  /** 会話の窓でクロスが答えるあいだ、頭の上に札を出しておく（話し手が変わったら、しまう） */
+  holdBoard(id: string, text: string) {
+    this.bubbles.get(id)?.remove();
+    const b = this.makeBubble(id, text);
+    this.bubbleLayer.append(b);
+    this.bubbles.set(id, b);
+    this.heldBoard = { id, el: b };
+    this.placeBubbles();
+  }
+
+  /** 吹き出しを、しゃべる子の頭の上に合わせる */
+  private placeBubbles() {
+    for (const [id, b] of this.bubbles) {
+      const m = this.movers.get(id)!;
+      const p = id === 'w' ? this.workerPos(m) : m;
+      b.style.left = `${p.x + S / 2}px`;
+      b.style.top = `${p.y - 14}px`;
+    }
   }
 
   /** 住人の要素（カーソルの合図を出すため） */
@@ -666,10 +800,11 @@ export class Page {
     return !!this.movers.get(id)?.asleep;
   }
 
-  /** 演出 */
-  async fx(name: string): Promise<void> {
+  /** 演出。instant は開発用（途中から始めるとき、歩いたりせず、終わった形にする） */
+  async fx(name: string, instant = false): Promise<void> {
     if (name === 'linkRoof') {
       // リンクが屋根の下へ行って、持ち上げようとする → 屋根が斜めに（家が見える所まで送ってから）
+      if (instant) return; // 途中から始めるときは、屋根はあとで直した形にするので、何もしない
       this.scrollTo('home');
       const l = this.movers.get('l')!;
       const g = this.gardenBox();
@@ -684,6 +819,109 @@ export class Page {
       // 屋根がななめに押し上がる（ソースにも transform として出る）
       this.model.set('.roof', 'transform', 'rotate(-11deg)');
       await sleep(900);
+    }
+    if (name === 'reunite') {
+      // お堀がなくなった。マージが、お城から出て、エコーのところまで歩いてくる
+      const mm = this.movers.get('m')!;
+      const ee = this.movers.get('e')!;
+      if (instant) {
+        [mm.x, mm.y] = [ee.x + S + 16, ee.y];
+        [mm.tx, mm.ty] = [mm.x, mm.y];
+        return;
+      }
+      const c = this.castleBox();
+      const max = this.scroller.scrollHeight - this.scroller.clientHeight;
+      this.scroller.scrollTo({ top: clamp(c.y + c.h / 2 - this.scroller.clientHeight * 0.4, 0, max), behavior: 'smooth' });
+      await sleep(900);
+      mm.hold = true;
+      mm.rush = 70;
+      await new Promise<void>((done) => {
+        mm.tx = ee.x + S + 16;
+        mm.ty = ee.y;
+        mm.goal = done;
+      });
+      mm.rush = undefined;
+      mm.angle = -90; // エコーのほうを向く
+      await sleep(700);
+    }
+    if (name === 'together') {
+      // 二人いっしょに、どこへでも歩く（エコーは、マージのそばを、ゆっくりついていく）
+      const mm = this.movers.get('m')!;
+      const ee = this.movers.get('e')!;
+      this.together = true;
+      mm.hold = false;
+      mm.wait = 1.5;
+      ee.hold = false;
+      ee.rush = 40; // エコーは、ふだんの速さが 0（立ちどまっている子）なので、ここで歩く速さを決める
+      ee.wait = 2;
+      ee.faceText.textContent = ee.r.face;
+    }
+    if (name === 'uptimeHides') {
+      // アップタイムが、いつのまにか、クロスの看板の裏で寝ている
+      const u = this.movers.get('u')!;
+      const s = this.signBox();
+      // 立方体の上の面が、看板の上からはみ出さないよう、少し下に
+      [u.x, u.y] = [s.x + (s.w - S) / 2, s.y + 12];
+      [u.tx, u.ty] = [u.x, u.y];
+      u.hold = true;
+      u.hidden = true;
+      this.wake(u, false);
+    }
+    if (name === 'snore') {
+      // 看板の裏から、アップタイムの寝息（吹き出しだけ、看板の上に見える）
+      if (instant) return;
+      this.scrollTo('home');
+      await sleep(500);
+      this.bubble('u', 'ぐう……', 4200, true);
+      await sleep(1400);
+    }
+    if (name === 'overflowArrives') {
+      // オーバーフローが、ページの右の端から走ってくる
+      const o = this.movers.get('o')!;
+      const s = this.signBox();
+      o.el.style.display = '';
+      o.hidden = false;
+      const to: [number, number] = [s.x - 160, s.y + 96];
+      if (instant) {
+        [o.x, o.y] = to;
+        [o.tx, o.ty] = to;
+        o.hold = false;
+        return;
+      }
+      this.scrollTo('home');
+      [o.x, o.y] = [this.world.clientWidth - S, s.y + 96];
+      o.hold = true;
+      o.rush = 240;
+      await new Promise<void>((done) => {
+        [o.tx, o.ty] = to;
+        o.goal = done;
+      });
+      o.rush = undefined;
+      o.hold = false;
+      o.wait = 2;
+    }
+    if (name === 'uptimeFound') {
+      // アップタイムが看板の前に出てきて、目をさまし、看板の裏から出てくる
+      const u = this.movers.get('u')!;
+      const s = this.signBox();
+      u.hidden = false;
+      this.wake(u, true);
+      const to: [number, number] = [s.x - 60, s.y + 74];
+      if (instant) {
+        [u.x, u.y] = to;
+        [u.tx, u.ty] = to;
+        u.hold = false;
+        return;
+      }
+      await sleep(600);
+      u.rush = 60;
+      await new Promise<void>((done) => {
+        [u.tx, u.ty] = to;
+        u.goal = done;
+      });
+      u.rush = undefined;
+      u.hold = false;
+      u.wait = 3;
     }
     if (name === 'roofFixed') {
       const l = this.movers.get('l')!;
@@ -701,6 +939,8 @@ function div(cls: string) {
 }
 
 const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
+/** クロスの札に書く字（せりふの〔 〕を外す） */
+const boardText = (text: string) => text.replace(/^〔|〕$/g, '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** 回る向きが、いちばん近くなるような角度（359° → 1° で、ぐるっと回らないように） */

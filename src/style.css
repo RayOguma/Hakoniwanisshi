@@ -144,7 +144,8 @@ input[readonly] {
 #dialog {
   position: absolute;
   left: 50%;
-  bottom: 18px;
+  /* 画面のいちばん下（タスクバーと重なることがある）から、少し上げておく */
+  bottom: 56px;
   transform: translateX(-50%);
   width: min(640px, calc(100% - 24px));
   min-height: 88px;
@@ -188,6 +189,28 @@ input[readonly] {
 .dlg-text.me {
   color: #445;
 }
+/* クロスのせりふは、札の形（しゃべっているのではなく、札に書いた字を見せている） */
+.dlg-board {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 16px;
+  background: #f6eedc;
+  border: 3px solid #b89a72;
+  border-radius: 5px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: #b0503c;
+}
+/* オーバーフローのせりふは、折り返さずに、窓の右からはみ出す（本物の CSS の overflow のように） */
+.dlg-text.spill {
+  white-space: nowrap;
+}
+@media (max-width: 960px) {
+  /* せまい画面では、画面の外に出てしまうので、ふつうに折り返す */
+  .dlg-text.spill {
+    white-space: normal;
+  }
+}
 .dlg-text code,
 .gd code {
   background: #f0eaf4;
@@ -196,6 +219,94 @@ input[readonly] {
   padding: 0 4px;
   font-family: var(--mono);
   font-size: 0.9em;
+}
+/* 会話の窓の右上の「ログ」ボタン */
+.dlg-log-btn {
+  position: absolute;
+  top: -15px;
+  right: 16px;
+  padding: 1px 12px;
+  border: 2px solid #333;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12px;
+  color: #555;
+}
+.dlg-log-btn:hover {
+  background: #fde2ec;
+}
+/* 会話のログ */
+#log {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  display: grid;
+  place-items: center;
+  background: rgba(30, 28, 36, 0.45);
+  animation: fadein 0.2s ease;
+}
+.log-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, calc(100% - 32px));
+  height: min(72vh, 640px);
+  background: #fff;
+  border: 2px solid #333;
+  border-radius: 14px;
+  overflow: hidden;
+  font-family: var(--round);
+}
+.log-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e4e0da;
+  font-size: 14px;
+  font-weight: bold;
+  color: #555;
+}
+.log-close {
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  background: #f6f4f0;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+.log-list {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 18px 18px;
+}
+.log-row {
+  padding: 8px 0;
+  border-bottom: 1px dashed #ece8e2;
+}
+.log-name {
+  display: inline-block;
+  margin-bottom: 2px;
+  padding: 0 10px;
+  border: 1.5px solid #333;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #3a2e34;
+}
+.log-name.me {
+  background: #fff;
+  color: #667;
+}
+.log-text {
+  font-size: 15px;
+  line-height: 1.7;
+  color: #333;
+}
+.log-row.narr .log-text {
+  color: #778;
+}
+.log-choice {
+  color: #c0507a;
+  font-weight: bold;
 }
 .dlg-next {
   position: absolute;
@@ -443,6 +554,18 @@ input.pval:focus {
     transform: translateY(0) scale(1.05, 0.95);
   }
 }
+/* 開発用: 何問目から始めるか（npm run dev のときだけ出る） */
+.tt-dev {
+  margin-top: 14px;
+  padding: 4px 10px;
+  border: 1px dashed #b0a498;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #8a7e74;
+}
+.tt-dev select {
+  font: inherit;
+}
 .tt-logo {
   margin: 0;
   font-size: clamp(40px, 8vw, 72px);
@@ -623,7 +746,7 @@ input.pval:focus {
 #op-hint {
   position: fixed;
   left: 50%;
-  bottom: 34px;
+  bottom: 72px;
   z-index: 900;
   display: flex;
   align-items: center;
@@ -800,6 +923,15 @@ input.pval:focus {
 }
 .gd-art p {
   margin: 0 0 10px;
+}
+/* 主人公が読んでいる所を、黄色い枠で囲む */
+.gd-art p.gd-mark {
+  margin: 0 -8px 10px;
+  padding: 4px 8px;
+  background: #fff8e0;
+  border-radius: 6px;
+  box-shadow: 0 0 0 3px #f2b84a;
+  transition: box-shadow 0.3s, background 0.3s;
 }
 .gd-art.flash {
   box-shadow: 0 0 0 3px #f2c46d;

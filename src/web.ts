@@ -301,6 +301,20 @@ export class GuideView {
     }
   }
 
+  /**
+   * 記事の段落を、黄色い枠で囲む（主人公が、そこを読んでいるとき）。paras は 1 から数える段落の番号。
+   * 囲んだ所が、会話の窓に隠れないよう、上のほうに来るまで送る。id が null なら、枠を外す
+   */
+  mark(id: string | null, paras: number[] = [1]) {
+    this.el.querySelectorAll('.gd-mark').forEach((x) => x.classList.remove('gd-mark'));
+    if (!id) return;
+    const ps = [...this.el.querySelectorAll<HTMLElement>(`#art-${id} p`)].filter((_, i) => paras.includes(i + 1));
+    ps.forEach((p) => p.classList.add('gd-mark'));
+    if (!ps.length) return;
+    const top = ps[0].getBoundingClientRect().top - this.el.getBoundingClientRect().top;
+    this.el.scrollTo({ top: this.el.scrollTop + top - 90, behavior: 'smooth' });
+  }
+
   /** その記事まで送る */
   show(id: string, smooth = false) {
     const target = this.el.querySelector<HTMLElement>(`#art-${id}`);
