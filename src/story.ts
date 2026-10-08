@@ -1,7 +1,7 @@
 // 試作の中身（はじまり 〜 問題3）。くわしい流れは docs/シナリオ_はじまり〜問題3.md
 import type { Area, PageModel } from './model';
 
-export type ResId = 'v' | 'h' | 'w' | 'l' | 'u';
+export type ResId = 'v' | 'h' | 'w' | 'l' | 'u' | 'm' | 'e';
 /** 話し手。me は主人公、narr は地の文 */
 export type Who = ResId | 'me' | 'narr';
 export interface Choice {
@@ -9,7 +9,8 @@ export interface Choice {
   /** 選んだときだけ流れる会話 */
   then?: Line[];
 }
-export type Line = { who: Who; text: string; fx?: string } | { choice: Choice[] };
+/** far: 遠くから聞こえる声。その子のところへ、画面を送らない */
+export type Line = { who: Who; text: string; fx?: string; far?: boolean } | { choice: Choice[] };
 
 export interface Resident {
   id: ResId;
@@ -24,6 +25,8 @@ export interface Resident {
   speed: number;
   /** カーソルを追いかける */
   follows?: boolean;
+  /** ひとりのときの顔（だれかと話すときだけ、face になる） */
+  aloneFace?: string;
 }
 
 export const RESIDENTS: Resident[] = [
@@ -32,6 +35,10 @@ export const RESIDENTS: Resident[] = [
   { id: 'l', face: '・l・', name: 'リンク', color: '#8fd0aa', hair: '#4f9a72', speed: 55 },
   { id: 'u', face: '-u-', name: 'アップタイム', color: '#c4b6e8', hair: '#8a78c0', speed: 28 },
   { id: 'w', face: '・w・', name: 'ワーカー', color: '#f4cc7c', hair: '#d09a38', speed: 0 },
+  // マージは、お堀に囲まれた小さなお城の中にいる（お城から出られない）
+  { id: 'm', face: '・m・', name: 'マージ', color: '#e8a890', hair: '#c07a60', speed: 34 },
+  // エコーは、お堀の外に立って、動かずに、お城のほうを見つめている。ひとりのときは笑っていない（話すときだけ、にこにこする）
+  { id: 'e', face: '^e^', name: 'エコー', color: '#f6d0dc', hair: '#e0a2b8', speed: 0, aloneFace: '・e・' },
 ];
 
 export const resident = (id: Who) => RESIDENTS.find((r) => r.id === id);
@@ -78,7 +85,7 @@ export function makeAreas(): Area[] {
       html: [
         '<!-- 2009/04/03',
         '  最初の住人を作った。h。',
-        '  作ったそばからため息をついた。先が思いやられる、だって。こっちのせりふだよ。 -->',
+        '  作ったそばから、ため息をつかれた。「先が思いやられる」そうだ。それは、こっちが言いたい。 -->',
         '<div class="house">',
         '  <div class="roof"></div>',
         '  <div class="h">-h-</div>',
@@ -108,9 +115,24 @@ export function makeAreas(): Area[] {
         {
           selector: '.w',
           allowAdd: true,
-          props: [{ name: 'animation', value: 'run 14s linear infinite', locked: true, note: '止める処理を書き忘れた。まあいい、楽しそうだし' }],
+          props: [{ name: 'animation', value: 'run 9s linear infinite', locked: true, note: '止める処理を書き忘れた。まあいい、楽しそうだし' }],
         },
       ],
+    },
+    {
+      // マージのお城（問題4で開く）。お堀は、お城の箱の border
+      id: 'castle',
+      title: 'マージのお城',
+      html: [
+        '<!-- 2010/03/14',
+        '  m が「ひとりになりたい」と言うので、小さな城を作ってやった。堀もつけた。',
+        '  橋は、出たくなったら言え、と言ってある。 -->',
+        '<div class="castle">',
+        '  <div class="keep"></div>',
+        '  <div class="m">・m・</div>',
+        '</div>',
+      ],
+      css: [{ selector: '.castle', props: [{ name: 'border', value: '18px solid #a9d3ee' }] }],
     },
   ];
 }
@@ -137,7 +159,7 @@ export const INTRO: Line[] = [
   { who: 'v', text: 'おかえりなさい！ ねえ、ひさしぶりだね！' },
   { who: 'me', text: '（……かんりにんさん？ もしかして、こっちのこと……？）' },
   { choice: [{ label: 'ただいま' }, { label: '……ただいま' }] },
-  { who: 'w', text: 'ほんとだ！ かんりにんだ！ あはは！ おかえりー！' },
+  { who: 'w', text: 'ほんとだ！ かんりにんだ！ あはは！ おかえりー！', far: true },
   { who: 'l', text: 'おう、帰ったか。……待ってたぜ。まあ、オレは別に待ってなかったけどな。' },
   { who: 'u', text: '……ん……おかえり……。……ぐう。' },
   { who: 'h', text: '…………おかえり。' },
@@ -187,7 +209,7 @@ export const PROBLEMS: Problem[] = [
       { who: 'v', text: 'えへへ、つんつん された！' },
       { who: 'v', text: 'あのね、かんりにんさん。ぼくね、ずっと、いろが うすいの。' },
       { who: 'v', text: 'みんなは ちゃんと いろが あるのに。……ぼくだけ、すけてるの。' },
-      { who: 'w', text: 'v は すけすけー！ あはは！' },
+      { who: 'w', text: 'v は すけすけー！ あはは！', far: true },
       { who: 'v', text: 'すけすけじゃ ないもん！ ……ね、かんりにんさん、なおして くれる？' },
       {
         choice: [
@@ -221,7 +243,7 @@ export const PROBLEMS: Problem[] = [
     solved: (m) => num(m.get('.v', 'opacity')) >= 0.95,
     done: [
       { who: 'v', text: 'わあ……！ ぼく、いろ ついた！ みて、みて！' },
-      { who: 'w', text: 'v が ピンクだ！ あはは！' },
+      { who: 'w', text: 'v が ピンクだ！ あはは！', far: true },
       { who: 'h', text: '……よかったな。' },
       { who: 'v', text: 'かんりにんさん、ありがとう！ やっぱり かんりにんさんだ！' },
     ],
@@ -280,16 +302,18 @@ export const PROBLEMS: Problem[] = [
       h: [{ who: 'h', text: '……`animation-play-state` だ。……止めるなら、`paused`。' }],
     },
     solved: (m) => m.get('.w', 'animation-play-state') === 'paused',
-    doneFx: 'river',
     done: [
       { who: 'w', text: '……とまった！ あはは、とまれた！ とまるって、たのしいね！' },
       { who: 'v', text: 'おてがみ！ おてがみ！' },
       { who: 'w', text: 'はい！ ……あれ、これ、v のじゃないや。エコーから、マージへの おてがみだ。' },
-      { who: 'v', text: 'マージ？ マージって、川の むこうの？' },
-      { who: 'w', text: 'そう！ ずっと わたそうとしてたんだけど、川が あって、むこうに いけないの。だから ずっと はしってた！' },
-      { who: 'v', text: '……エコーと マージ、ずっと あえてないの？' },
-      { who: 'w', text: 'うん。おてがみだけ。ぼくが いるから、だいじょうぶ！ あはは！' },
-      { who: 'narr', text: '（ページの「準備中」が、ひとつ外れた。……試作は、ここまで。）' },
+      { who: 'v', text: 'マージ？ マージって、あの おしろの？' },
+      { who: 'w', text: 'そう！ ずっと わたそうとしてたんだけど、おしろの まわり、ぜんぶ おほりなの。わたれないから、ずっと まわりを はしってた！' },
+      { who: 'v', text: '……じゃあ、エコーの おてがみ、ずっと マージに とどいて ないの？' },
+      { who: 'w', text: 'うん……。はしが ないから、だれも わたれないの。' },
+      { who: 'v', text: 'エコーと マージ、もう ずっと あって ないんだ……。' },
+      { who: 'e', text: '……。' },
+      { who: 'm', text: '……なに。みんなして、こっち 見ないでよ。' },
+      { who: 'narr', text: '（……試作は、ここまで。）' },
     ],
   },
 ];
@@ -297,10 +321,12 @@ export const PROBLEMS: Problem[] = [
 /** ふだんの一言（クリックしたとき）。解いた問題の数（0〜3）で変わる */
 export const CHATTER: Record<ResId, string[]> = {
   v: ['ぼく、すけてる？', 'みて！ ぼく、ピンク！', 'ヘッドの おうち、なおって よかったね。', 'エコーと マージ、あえたら いいな。'],
-  h: ['……なんだ。', '……そいつ、うるさくなったな。', '……屋根の礼は、もう言った。', '……川か。……はあ。'],
-  l: ['任せろ。……何をだ？', '任せろ。', '屋根はオレが直した。だいたいな。', '川？ オレが橋になってやってもいいぜ。'],
+  h: ['……なんだ。', '……そいつ、うるさくなったな。', '……屋根の礼は、もう言った。', '……堀か。……はあ。'],
+  l: ['任せろ。……何をだ？', '任せろ。', '屋根はオレが直した。だいたいな。', '堀？ オレが橋になってやってもいいぜ。'],
   u: ['……ぐう。', '……ぐう。', '……あめ、やんだ……ぐう。', '……ワーカー、しずか……ぐう。'],
   w: ['あはは！', 'v が ピンク！ あはは！', 'やねー！ あはは！', 'とまるの、たのしい！'],
+  m: ['……なに。こっち 見ないでよ。', '……べつに、さみしく なんか ないし。', '……屋根、なおったんだ。……ふーん。', '……てがみ？ ……しらない。'],
+  e: ['……あ。……おかえりなさい。', '……。', '……。', '……とどいて、なかったんだね。'],
 };
 
 /** ひとりごと（ときどき、吹き出しで勝手にしゃべる） */
@@ -310,6 +336,8 @@ export const MUTTER: Record<ResId, string[]> = {
   l: ['任せろ。', 'オレがいちばん背が高い。', '……今日も決まってるな、オレ。', '橋？ 任せろ。'],
   u: ['……ぐう。', '……むにゃ……', '……すやぁ……', '……あと……ごふん……'],
   w: ['あはは！', 'はしるの、たのしい！', 'おてがみでーす！', 'びゅーん！'],
+  m: ['……ふん。', '……むこう、にぎやかだな。', '……べつに。', '……ひとりで いいって、いったのに。'],
+  e: ['……。', '……マージ。', '……。'],
 };
 
 /** 書き換えたときの反応（解いたあとの場所） */

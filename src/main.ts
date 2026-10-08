@@ -38,13 +38,22 @@ const source = new SourcePanel($('source'), model, toast);
 let page: Page | null = null;
 const dialog = new Dialog(
   $('dialog'),
-  (who) => page?.setTalking(who && RESIDENTS.some((r) => r.id === who) ? [who] : []),
+  (who, far) => {
+    const res = !!who && RESIDENTS.some((r) => r.id === who);
+    page?.setTalking(res ? [who!] : []);
+    // しゃべる子のところへ送って、少し寄る（主人公や地の文、遠くから聞こえる声のときは、そのまま）
+    if (res && !far) page?.focus(who!);
+  },
   async (fx) => {
+    page?.focus(null);
     await page?.fx(fx);
   },
 );
 
-const play = (lines: Line[]) => dialog.play(lines);
+async function play(lines: Line[]) {
+  await dialog.play(lines);
+  page?.focus(null);
+}
 
 // ---- タブ ----
 const ADDRESS: Record<string, string> = {
@@ -215,7 +224,6 @@ async function talk(id: ResId) {
   const p = PROBLEMS[current];
   if (p && !started && id === p.owner) {
     started = true;
-    page?.scrollTo('home');
     refreshMark();
     // 演出（屋根・雨など）は、ページを元の幅に戻して見せる。会話のあと、開いていたソースは開き直す
     dialog.busy = true;
@@ -255,7 +263,6 @@ model.onChange(async (rule, prop) => {
   if (r) {
     dialog.busy = true;
     const reopen = await closeSourceForTalk();
-    await page?.settleWorker();
     await play(r);
     // まだ直すところがあるので、ソースは開き直す
     reopen();
@@ -271,7 +278,6 @@ async function trySolve(): Promise<boolean> {
   dialog.busy = true;
   // 解けたあとは、次の問題を探しに行くので、ソースは閉じたままにする
   await closeSourceForTalk();
-  await page?.settleWorker();
   if (p.doneFx) await page?.fx(p.doneFx);
   await play(p.done);
   current++;

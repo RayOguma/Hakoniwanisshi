@@ -7,7 +7,7 @@ export class Dialog {
   constructor(
     private el: HTMLElement,
     /** 話し手が変わったとき（住人をこちらに向ける） */
-    private onSpeaker: (who: Who | null) => void,
+    private onSpeaker: (who: Who | null, far?: boolean) => void,
     /** せりふの前の演出（屋根がななめになる、など） */
     private onFx: (name: string) => Promise<void>,
   ) {}
@@ -35,12 +35,12 @@ export class Dialog {
         await this.onFx(l.fx);
         this.el.hidden = false;
       }
-      await this.say(l.who, l.text);
+      await this.say(l.who, l.text, l.far);
     }
   }
 
-  private say(who: Who, text: string): Promise<void> {
-    this.onSpeaker(who === 'narr' || who === 'me' ? null : who);
+  private say(who: Who, text: string, far?: boolean): Promise<void> {
+    this.onSpeaker(who === 'narr' || who === 'me' ? null : who, far);
     this.el.replaceChildren();
     const r = resident(who);
     if (r || who === 'me') {

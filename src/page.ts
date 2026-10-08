@@ -5,13 +5,15 @@ import { CARDS, LINKS, POSTS } from './site';
 import { RESIDENTS, roofFixed, type Resident, type ResId } from './story';
 
 const S = 46; // 立方体の大きさ
+/** しゃべる子に寄るときの拡大 */
+const ZOOM = 1.22;
 /** 上から見下ろす角度（頭のてっぺんと、進む方向の面が見える） */
 const TILT = -58;
 
 const BASE_CSS = `
 :host { display: block; }
-/* 住人が歩ける世界。ページ（.page）の外の、まわりの余白まで歩いていける */
-.world { position: relative; min-height: 100%; padding: 1px 0; overflow: hidden; }
+/* 住人が歩ける世界。ページ（.page）の外の、まわりの余白まで歩いていける。しゃべる子に寄るときは、世界ごと拡大する */
+.world { position: relative; min-height: 100%; padding: 1px 0; overflow: hidden; transition: transform 0.6s ease, transform-origin 0.6s ease; }
 * { box-sizing: border-box; }
 .page {
   position: relative; max-width: 860px; margin: 28px auto 140px; padding: 40px 48px 32px;
@@ -28,7 +30,7 @@ nav span:hover { color: #5a4a3e; }
 nav span.on { border-color: #e8a0b8; color: #5a4a3e; }
 
 .garden {
-  position: relative; margin-top: 20px; height: 520px; border-radius: 16px;
+  position: relative; margin-top: 20px; height: 400px; border-radius: 16px;
   background:
     radial-gradient(circle, rgba(160, 140, 120, 0.18) 1px, transparent 1.5px) 0 0 / 22px 22px,
     #f3efe6;
@@ -52,12 +54,26 @@ nav span.on { border-color: #e8a0b8; color: #5a4a3e; }
 }
 @keyframes drop { from { transform: translateY(0); opacity: 1; } to { transform: translateY(70px); opacity: 0; } }
 
-.soon {
-  position: absolute; left: 32px; right: 32px; height: 86px; border: 2px dashed #d8cfc2; border-radius: 14px;
-  display: grid; place-items: center; color: #b8aca0; font-size: 13px; letter-spacing: 0.3em;
+/* マージのお城。まわりのお堀は、お城の箱の border（線。ページの CSS で決まる）。堀があるあいだは、だれも渡れない */
+.castle {
+  position: relative; width: 440px; height: 240px; margin: 64px auto 0; border-radius: 56px;
+  background: radial-gradient(circle, rgba(120, 150, 90, 0.28) 1.5px, transparent 2px) 0 0 / 18px 18px, #e2ebcb;
+  box-shadow: 0 0 0 2px #d6cab2, inset 0 0 0 2px #c9d8ac;
 }
-.soon.s1 { top: 300px; } .soon.s2 { top: 404px; }
-.soon.river { border: none; background: linear-gradient(90deg, #cfe6f4, #b8d8ee, #cfe6f4); color: #6a98bc; letter-spacing: 0.1em; }
+.keep {
+  position: absolute; left: 36px; top: 46px; width: 124px; height: 86px;
+  background: #f3ebdc; border: 2px solid #cdbfa6; border-radius: 4px;
+}
+.keep::before {
+  content: ''; position: absolute; left: -2px; right: -2px; top: -14px; height: 13px;
+  background: repeating-linear-gradient(90deg, #f3ebdc 0 16px, transparent 16px 26px);
+}
+.keep::after {
+  content: ''; position: absolute; left: 50%; bottom: 0; width: 28px; height: 38px; margin-left: -14px;
+  background: #cdbfa6; border-radius: 14px 14px 0 0;
+}
+.flag { position: absolute; left: 96px; top: 6px; width: 2px; height: 28px; background: #8a7e74; }
+.flag::after { content: ''; position: absolute; left: 2px; top: 0; width: 22px; height: 14px; background: #e8a890; clip-path: polygon(0 0, 100% 50%, 0 100%); }
 
 /* 住人たち・日誌・リンク */
 section.sec { margin-top: 56px; }
@@ -127,17 +143,6 @@ footer { margin-top: 26px; text-align: center; font-size: 11px; color: #b0a498; 
 .bubble.out { opacity: 0; transition: opacity 0.4s ease; }
 @keyframes pop { from { transform: translateX(-50%) scale(0.6); opacity: 0; } }
 
-/* ワーカーは、CSS のアニメーションで、ページの中を走りまわる（止めると、そこで止まる） */
-@keyframes run {
-  0%   { transform: translate(calc(var(--pw) * 0.10), calc(var(--ph) * 0.12)); }
-  12%  { transform: translate(calc(var(--pw) * 0.92), calc(var(--ph) * 0.06)); }
-  26%  { transform: translate(calc(var(--pw) * 0.60), calc(var(--ph) * 0.35)); }
-  40%  { transform: translate(calc(var(--pw) * 0.04), calc(var(--ph) * 0.50)); }
-  55%  { transform: translate(calc(var(--pw) * 0.85), calc(var(--ph) * 0.72)); }
-  70%  { transform: translate(calc(var(--pw) * 0.30), calc(var(--ph) * 0.95)); }
-  85%  { transform: translate(calc(var(--pw) * 0.50), calc(var(--ph) * 0.25)); }
-  100% { transform: translate(calc(var(--pw) * 0.10), calc(var(--ph) * 0.12)); }
-}
 `;
 
 export interface PageHooks {
@@ -173,7 +178,11 @@ export class Page {
   private page: HTMLElement;
   private world!: HTMLElement;
   private rain: HTMLElement;
-  private soon: HTMLElement;
+  private castle: HTMLElement;
+  /** しゃべっている子に寄るときの、拡大の割合（1 はふつう） */
+  private zoom = 1;
+  /** ワーカーが走る道（お堀のまわり）。お城の位置から作る @keyframes run */
+  private runStyle: HTMLStyleElement;
   private movers = new Map<string, Mover>();
   private mouse: { x: number; y: number } | null = null;
   private talking = new Set<string>();
@@ -181,7 +190,8 @@ export class Page {
   uptimeAtEaves = true;
   /** ページの左はし（幅が変わってページが動いたら、住人もいっしょに動かす） */
   private pageLeft = 0;
-  private workerPaused = false;
+  /** お城の位置（ソースを開いてページの幅が変わると、上の段が折り返して、お城が上下にも動く） */
+  private castleAt: { x: number; y: number } | null = null;
 
   constructor(
     host: HTMLElement,
@@ -194,7 +204,8 @@ export class Page {
     const base = document.createElement('style');
     base.textContent = BASE_CSS + RESIDENTS.map((r) => `.${r.id} { color: ${r.color}; }`).join('\n');
     this.modelStyle = document.createElement('style');
-    this.root.append(base, this.modelStyle);
+    this.runStyle = document.createElement('style');
+    this.root.append(base, this.runStyle, this.modelStyle);
 
     this.page = div('page');
     this.page.innerHTML = `
@@ -206,10 +217,9 @@ export class Page {
       <div class="garden" id="home">
         <div class="house"><div class="roof"></div><div class="walls"></div></div>
         <div class="rain"></div>
-        <div class="soon s1">準 備 中</div>
-        <div class="soon s2">準 備 中</div>
       </div>
       <section class="sec" id="residents"><h2>住人たち</h2><div class="cards"></div></section>
+      <div class="castle"><div class="keep"></div><div class="flag"></div></div>
       <section class="sec" id="posts"><h2>日誌</h2><div class="posts"></div></section>
       <section class="sec" id="links"><h2>リンク</h2><ul class="links"></ul></section>
       <footer>visitors <span class="counter">000127</span> ・ 最終更新 2012/02/</footer>
@@ -225,7 +235,7 @@ export class Page {
       });
     }
     this.rain = this.page.querySelector('.rain')!;
-    this.soon = this.page.querySelector('.soon.s1')!;
+    this.castle = this.page.querySelector('.castle')!;
     for (let i = 0; i < 6; i++) {
       const d = document.createElement('i');
       d.style.left = `${(i * 7) % 40}px`;
@@ -235,8 +245,9 @@ export class Page {
     for (const r of RESIDENTS) this.addResident(r);
 
     this.world.addEventListener('mousemove', (e) => {
+      // 寄って拡大しているときは、拡大の分を戻して、世界の中の座標にする
       const b = this.world.getBoundingClientRect();
-      this.mouse = { x: e.clientX - b.left, y: e.clientY - b.top };
+      this.mouse = { x: (e.clientX - b.left) / this.zoom, y: (e.clientY - b.top) / this.zoom };
     });
     this.world.addEventListener('mouseleave', () => (this.mouse = null));
     new ResizeObserver(() => this.sizeVars()).observe(this.world);
@@ -252,10 +263,9 @@ export class Page {
     requestAnimationFrame(loop);
   }
 
-  /** ワーカーが走りまわる範囲（世界ぜんぶ）を、CSS の変数で渡す */
+  /** 大きさが変わったとき: ワーカーの道を作り直し、ページが横に動いたら住人も動かす */
   private sizeVars() {
-    this.world.style.setProperty('--pw', `${this.world.clientWidth - S}px`);
-    this.world.style.setProperty('--ph', `${this.world.clientHeight - S}px`);
+    this.makeRunPath();
     // ソースを開け閉めしてページが横に動いたら、住人も同じだけ動く（軒下のアップタイムが、軒下からはずれないように）
     const left = this.page.offsetLeft;
     const dx = left - this.pageLeft;
@@ -263,7 +273,7 @@ export class Page {
     if (!dx) return;
     const W = this.world.clientWidth - S;
     for (const m of this.movers.values()) {
-      if (m.r.id === 'w') continue;
+      if (m.r.id === 'w' || m.r.id === 'm' || m.r.id === 'e') continue;
       m.x = clamp(m.x + dx, 0, W);
       m.tx = clamp(m.tx + dx, 0, W);
       this.draw(m);
@@ -317,7 +327,7 @@ export class Page {
       const face = div(`f f-${f}`);
       if (f === 'front') {
         faceText = document.createElement('span');
-        faceText.textContent = r.face;
+        faceText.textContent = r.aloneFace ?? r.face;
         face.append(faceText);
       }
       cube.append(face);
@@ -341,12 +351,96 @@ export class Page {
       l: [g.x + g.w / 2 + 110, g.y + 200],
       u: [g.x + g.w / 2 + 52, g.y + 132],
       w: [0, 0],
+      m: [0, 0],
+      e: [0, 0],
     };
     [m.x, m.y] = spots[m.r.id];
+    if (m.r.id === 'm') {
+      const i = this.castleBox().inner;
+      [m.x, m.y] = [i.x + i.w / 2 - S / 2, i.y + i.h / 2 - S / 2];
+    }
+    if (m.r.id === 'e') {
+      // お堀の左の外（ワーカーの走る道よりも外）に立って、お城のほうを向いている
+      const c = this.castleBox();
+      [m.x, m.y] = [c.x - S * 2 - 44, c.y + c.h / 2 - S / 2];
+      m.hold = true;
+      m.angle = 90;
+    }
     m.tx = m.x;
     m.ty = m.y;
     if (m.r.id === 'u') m.asleep = true;
     this.draw(m);
+  }
+
+  /** お城の位置（世界の中の座標）。外側はお堀（border）をふくむ。内側は、お城の地面 */
+  private castleBox() {
+    const el = this.castle;
+    const b = parseFloat(getComputedStyle(el).borderTopWidth) || 0;
+    const x = this.page.offsetLeft + el.offsetLeft;
+    const y = this.page.offsetTop + el.offsetTop;
+    return { x, y, w: el.offsetWidth, h: el.offsetHeight, inner: { x: x + b, y: y + b, w: el.offsetWidth - b * 2, h: el.offsetHeight - b * 2 }, river: b > 0 };
+  }
+
+  /**
+   * お城が動いたら、マージとエコーも同じだけ動く。
+   * それでもマージがお城の外にいたら（お堀があるあいだは）、中へ戻す
+   */
+  private followCastle() {
+    const c = this.castleBox();
+    if (this.castleAt) {
+      const dx = c.x - this.castleAt.x;
+      const dy = c.y - this.castleAt.y;
+      if (dx || dy) {
+        for (const id of ['m', 'e']) {
+          const m = this.movers.get(id);
+          if (!m) continue;
+          m.x += dx;
+          m.y += dy;
+          m.tx += dx;
+          m.ty += dy;
+        }
+      }
+    }
+    this.castleAt = { x: c.x, y: c.y };
+    const m = this.movers.get('m');
+    if (m && c.river && this.blocked(m, m.x, m.y)) {
+      const i = c.inner;
+      m.x = clamp(m.x, i.x + 6, i.x + i.w - S - 6);
+      m.y = clamp(m.y, i.y + 6, i.y + i.h - S - 6);
+      m.tx = m.x;
+      m.ty = m.y;
+    }
+  }
+
+  /** その位置に行けないか（お堀があるあいだ、マージはお城から出られず、ほかの子はお城に入れない） */
+  private blocked(m: Mover, x: number, y: number) {
+    const isl = this.castleBox();
+    if (!isl.river) return false;
+    if (m.r.id === 'm') {
+      const i = isl.inner;
+      return x < i.x + 4 || y < i.y + 4 || x + S > i.x + i.w - 4 || y + S > i.y + i.h - 4;
+    }
+    const pad = 6;
+    return x + S > isl.x - pad && x < isl.x + isl.w + pad && y + S > isl.y - pad && y < isl.y + isl.h + pad;
+  }
+
+  /** ワーカーの道: お城（お堀）のまわりを、角を落とした四角で、ぐるっと1周（同じ速さで走るよう、長さで割りふる） */
+  private makeRunPath() {
+    const isl = this.castleBox();
+    const gap = 16;
+    const l = isl.x - S - gap;
+    const r = isl.x + isl.w + gap;
+    const t = isl.y - S - gap;
+    const b = isl.y + isl.h + gap;
+    const c = 34; // 角を落とす長さ
+    const pts = [
+      [l + c, t], [r - c, t], [r, t + c], [r, b - c], [r - c, b], [l + c, b], [l, b - c], [l, t + c], [l + c, t],
+    ];
+    const len = [0];
+    for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    const total = len[len.length - 1];
+    const frames = pts.map(([x, y], i) => `${((len[i] / total) * 100).toFixed(2)}% { transform: translate(${x}px, ${y}px); }`);
+    this.runStyle.textContent = `@keyframes run { ${frames.join(' ')} }`;
   }
 
   /** 庭の位置（世界の中の座標） */
@@ -359,6 +453,7 @@ export class Page {
   private step(dt: number) {
     const W = this.world.clientWidth - S;
     const H = this.world.clientHeight - S;
+    this.followCastle();
     for (const m of this.movers.values()) {
       if (m.r.id === 'w') {
         this.stepWorker(m);
@@ -390,10 +485,20 @@ export class Page {
       if (dist > 2) {
         const speed = m.rush ?? (chasing ? Math.min(320, m.r.speed + dist * 1.6) : m.r.speed);
         const v = Math.min(dist, speed * dt);
-        m.x += (dx / dist) * v;
-        m.y += (dy / dist) * v;
-        m.angle = nearAngle(m.angle, (Math.atan2(dx, dy) * 180) / Math.PI);
-        this.setWalking(m, true);
+        const nx = m.x + (dx / dist) * v;
+        const ny = m.y + (dy / dist) * v;
+        if (this.blocked(m, nx, ny) && !this.blocked(m, m.x, m.y)) {
+          // お堀に行きあたった。そこで止まって、べつの所へ行く
+          m.tx = m.x;
+          m.ty = m.y;
+          m.wait = Math.min(m.wait, 0.4);
+          this.setWalking(m, false);
+        } else {
+          m.x = nx;
+          m.y = ny;
+          m.angle = nearAngle(m.angle, (Math.atan2(dx, dy) * 180) / Math.PI);
+          this.setWalking(m, true);
+        }
       } else {
         this.setWalking(m, false);
         if (m.goal) {
@@ -428,6 +533,14 @@ export class Page {
       m.ty = clamp(m.y + (Math.random() - 0.5) * 100, 0, H);
       return;
     }
+    // マージは、お城の中を、うろうろする
+    if (id === 'm') {
+      const i = this.castleBox().inner;
+      m.tx = i.x + 6 + Math.random() * (i.w - S - 12);
+      m.ty = i.y + 6 + Math.random() * (i.h - S - 12);
+      m.wait = 1.5 + Math.random() * 3.5;
+      return;
+    }
     // カーソルを追いかける子は、カーソルがページの中にある間は、step で追いかける
     if (m.r.follows && this.mouse) return;
     // ヘッドは、家のまわりにいることが少し多い
@@ -437,9 +550,12 @@ export class Page {
       m.ty = g.y + 110 + Math.random() * 60;
       return;
     }
-    // どこへでも行く。ただ、遠すぎる所へは一度に行かない（いま見えているあたりを、うろうろする）
-    m.tx = clamp(m.x + (Math.random() - 0.5) * 900, 0, W);
-    m.ty = clamp(m.y + (Math.random() - 0.5) * 700, 0, H);
+    // どこへでも行く。ただ、遠すぎる所へは一度に行かない（いま見えているあたりを、うろうろする）。お城の中（お堀の上）は、えらばない
+    for (let i = 0; i < 6; i++) {
+      m.tx = clamp(m.x + (Math.random() - 0.5) * 900, 0, W);
+      m.ty = clamp(m.y + (Math.random() - 0.5) * 700, 0, H);
+      if (!this.blocked(m, m.tx, m.ty)) break;
+    }
   }
 
   private wake(m: Mover, awake: boolean) {
@@ -447,12 +563,10 @@ export class Page {
     m.faceText.textContent = awake ? '・u・' : '-u-';
   }
 
-  /** ワーカーのいまの位置（CSS のアニメーションの位置 ＋ 画面内へ戻るためにずらした分） */
+  /** ワーカーのいまの位置（CSS のアニメーションの位置） */
   private workerPos(m: Mover) {
-    const cs = getComputedStyle(m.body);
-    const t = new DOMMatrix(cs.transform);
-    const [sx = 0, sy = 0] = cs.translate === 'none' ? [] : cs.translate.split(' ').map(parseFloat);
-    return { x: t.m41 + sx, y: t.m42 + (sy || 0) };
+    const t = new DOMMatrix(getComputedStyle(m.body).transform);
+    return { x: t.m41, y: t.m42 };
   }
 
   /** ワーカーは CSS のアニメーションで動く。前の位置からの向きで、顔を向ける */
@@ -487,45 +601,41 @@ export class Page {
   /** ページの CSS を当て直す（プレイヤーが書き換えたとき） */
   applyCss() {
     this.modelStyle.textContent = this.model.css();
-    const w = this.movers.get('w');
-    const paused = !!w && getComputedStyle(w.body).animationPlayState === 'paused';
-    if (w && this.workerPaused && !paused) {
-      // また走り出したら、ずらした分を戻す
-      w.body.style.transition = 'translate 0.8s ease';
-      w.body.style.translate = '0px 0px';
-    }
-    this.workerPaused = paused;
+    // お堀（お城の border）が変わると、ワーカーの道も変わる
+    this.makeRunPath();
     // 屋根がずれているか、傾いていると、雨もり
     this.rain.style.display = roofFixed(this.model) ? 'none' : '';
+  }
+
+  /** しゃべる子のところへ、ページを送って、少し寄る（null で、寄るのをやめる） */
+  focus(id: string | null) {
+    if (!id) {
+      this.zoom = 1;
+      this.world.style.transform = '';
+      return;
+    }
+    const m = this.movers.get(id);
+    if (!m) return;
+    const p = id === 'w' ? this.workerPos(m) : { x: m.x, y: m.y };
+    const cx = p.x + S / 2;
+    const cy = p.y + S / 2;
+    // 下は会話の窓に隠れるので、画面の上から 4 割くらいの所に来るように送る
+    const max = this.scroller.scrollHeight - this.scroller.clientHeight;
+    this.scroller.scrollTo({ top: clamp(cy - this.scroller.clientHeight * 0.4, 0, max), behavior: 'smooth' });
+    this.zoom = ZOOM;
+    this.world.style.transformOrigin = `${cx}px ${cy}px`;
+    this.world.style.transform = `scale(${ZOOM})`;
   }
 
   /** 話している子は、こちらを向いて止まる */
   setTalking(ids: string[]) {
     this.talking = new Set(ids);
-    for (const [id, m] of this.movers) m.el.classList.toggle('talking', this.talking.has(id));
+    for (const [id, m] of this.movers) {
+      m.el.classList.toggle('talking', this.talking.has(id));
+      // ひとりのときは笑っていない子も、話すときは、にこにこする
+      if (m.r.aloneFace) m.faceText.textContent = this.talking.has(id) ? m.r.face : m.r.aloneFace;
+    }
     if (this.talking.has('w')) this.movers.get('w')!.angle = 0;
-  }
-
-  /** 止まったワーカーが見えないところにいたら、見えるところまで歩いてきて、止まる */
-  async settleWorker(): Promise<void> {
-    const m = this.movers.get('w');
-    if (!m || !this.workerPaused) return;
-    const pos = this.workerPos(m);
-    const pad = 60;
-    const W = this.world.clientWidth - S;
-    const top = this.scroller.scrollTop;
-    // 下のほうは会話の窓に隠れるので、少し上までにする
-    const bottom = top + this.scroller.clientHeight - S - 170;
-    const tx = clamp(pos.x, pad, W - pad);
-    const ty = clamp(pos.y, top + pad, Math.max(top + pad, bottom));
-    const dist = Math.hypot(tx - pos.x, ty - pos.y);
-    if (dist < 1) return;
-    const sec = clamp(dist / 520, 0.5, 2.2);
-    const cs = getComputedStyle(m.body);
-    const [sx = 0, sy = 0] = cs.translate === 'none' ? [] : cs.translate.split(' ').map(parseFloat);
-    m.body.style.transition = `translate ${sec}s ease-out`;
-    m.body.style.translate = `${sx + tx - pos.x}px ${(sy || 0) + ty - pos.y}px`;
-    await sleep(sec * 1000 + 250);
   }
 
   /** 「!」を出す子 */
@@ -559,7 +669,8 @@ export class Page {
   /** 演出 */
   async fx(name: string): Promise<void> {
     if (name === 'linkRoof') {
-      // リンクが屋根の下へ行って、持ち上げようとする → 屋根が斜めに
+      // リンクが屋根の下へ行って、持ち上げようとする → 屋根が斜めに（家が見える所まで送ってから）
+      this.scrollTo('home');
       const l = this.movers.get('l')!;
       const g = this.gardenBox();
       l.hold = true;
@@ -579,10 +690,6 @@ export class Page {
       l.hold = false;
       l.wait = 1;
       this.uptimeAtEaves = false;
-    }
-    if (name === 'river') {
-      this.soon.classList.add('river');
-      this.soon.textContent = '〜 川 〜（つづく）';
     }
   }
 }

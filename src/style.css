@@ -135,6 +135,8 @@ input[readonly] {
   flex: 1;
   min-width: 0;
   overflow: auto;
+  /* しゃべる子に寄って拡大したとき、横にはみ出した分は出さない */
+  overflow-x: hidden;
   background: #eeebe5;
 }
 
