@@ -19,6 +19,8 @@ let stopFirstTouch: (() => void) | null = null;
 /** はじめて「ソースを見る」を押すまで出す、カーソルの合図を止める関数 */
 let stopSourceHint: (() => void) | null = null;
 const noticed = new Set<string>(); // 主人公が、日記を読んでひとこと言った場所
+/** 看板を打ち換えられるようになったとき、看板に出すカーソルの合図を止める関数 */
+let stopSignHint: (() => void) | null = null;
 let skipping = false; // 開発用: 途中から始めるために、前の問題を解いた形にしているところ
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -130,7 +132,8 @@ $('btn-source').addEventListener('click', () => {
 // S キーでも、ソースを開け閉めできる（字を打っているときは別。日本語入力中でも効くよう、key ではなく code で見る）
 document.addEventListener('keydown', (e) => {
   if (e.code !== 'KeyS' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-  if ((e.target as HTMLElement).closest?.('input, textarea')) return;
+  const target = e.composedPath()[0] as HTMLElement;
+  if (target?.isContentEditable || target?.closest?.('input, textarea')) return;
   if ($('btn-source').hidden) return;
   e.preventDefault();
   $('btn-source').click();
@@ -258,6 +261,7 @@ async function talk(id: ResId) {
       showOpHint();
     }
     reopen();
+    if (p.unlock) model.attrSlots.add(p.unlock);
     openArea(p.opens);
     void maybeNotice();
     return;
@@ -281,6 +285,13 @@ model.onChange(async (rule, prop) => {
     return;
   }
   if (await trySolve()) return;
+  if (rule.selector === '.sign' && prop === '@contenteditable' && model.attr('.sign', 'contenteditable') === 'true' && page && !stopSignHint) {
+    stopSignHint = yourTurn(page.signEl());
+  }
+  if (rule.selector === '.sign' && prop === '#text') {
+    stopSignHint?.();
+    stopSignHint = null;
+  }
   const r = reaction(model, rule.selector, prop, solved);
   if (r) {
     dialog.busy = true;
@@ -393,6 +404,7 @@ async function devStart(from: number) {
   for (const p of PROBLEMS.slice(0, from - 1)) {
     model.opened.add(p.opens);
     noticed.add(p.opens);
+    if (p.unlock) model.attrSlots.add(p.unlock);
     if (p.readyFx) await page.fx(p.readyFx, true);
     // 問題を始めたときの演出（オーバーフローが来る、など）も、済んだ形にする
     for (const l of p.prompt) if ('fx' in l && l.fx) await page.fx(l.fx, true);

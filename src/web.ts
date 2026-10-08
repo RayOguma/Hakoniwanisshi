@@ -243,6 +243,15 @@ export const ARTICLES: Article[] = [
     code: '/* 回す */\n.box {\n  transform: rotate(90deg);\n}\n\n/* 元に戻す（回転をなくす） */\n.box {\n  transform: none;\n}',
   },
   {
+    id: 'contenteditable',
+    title: '字を打ち換えられるようにする（contenteditable）',
+    body: [
+      'HTML のタグには、「属性」を書き足せます。`<div class="box">` の `class="box"` も、属性のひとつです。',
+      'タグに `contenteditable` と書き足すと、そのタグの中の字を、ページの上で直接打ち換えられるようになります。書き足したら、ページのその場所をクリックして、字を打ちましょう。',
+    ].join('\n\n'),
+    code: '<div class="box" contenteditable="true">\n  ここの字を、ページの上で打ち換えられる\n</div>',
+  },
+  {
     id: 'comment',
     title: 'コメントを書く（<!-- -->）',
     body: '`<!--` と `-->` のあいだに書いたものは、ページには表示されません。作った人のメモや、一時的に隠したいものに使います。',

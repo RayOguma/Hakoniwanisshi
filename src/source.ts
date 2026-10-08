@@ -59,7 +59,11 @@ export class SourcePanel {
     const pre = document.createElement('div');
     pre.className = 'code';
     let inComment = false;
-    for (const line of a.html) {
+    a.html.forEach((line, i) => {
+      if (a.tag && i === a.tag.line && this.model.attrSlots.has(a.tag.selector)) {
+        pre.append(this.tagLine(a.tag));
+        return;
+      }
       const row = document.createElement('div');
       // 日記（コメント）の行は、色を変える
       if (line.trimStart().startsWith('<!--')) inComment = true;
@@ -67,7 +71,7 @@ export class SourcePanel {
       row.textContent = line;
       if (line.includes('-->')) inComment = false;
       pre.append(row);
-    }
+    });
     if (a.css.length) {
       pre.append(row('<style>', 'ln html'));
       for (const r of a.css) this.rule(pre, r);
@@ -75,6 +79,43 @@ export class SourcePanel {
     }
     box.append(pre);
     return box;
+  }
+
+  /** 属性を書き足せるタグの行（例: <div class="sign" ＋属性>立入禁止</div>） */
+  private tagLine(tag: NonNullable<Area['tag']>): HTMLElement {
+    const line = document.createElement('div');
+    line.className = 'ln html tag-line';
+    line.append(span(tag.open, 'tag'));
+    for (const [name, value] of this.model.attrs.get(tag.selector) ?? []) {
+      line.append(span(` ${name}="${value}"`, 'attr'));
+      line.append(button('×', 'src-del', () => this.model.removeAttr(tag.selector, name)));
+    }
+    const input = document.createElement('input');
+    input.className = 'attr-add';
+    input.placeholder = '＋ 属性';
+    input.spellcheck = false;
+    input.size = 10;
+    const commit = () => {
+      const v = input.value.trim();
+      if (!v) return;
+      const m = v.match(/^([a-zA-Z-]+)(?:\s*=\s*["']?([^"']*)["']?)?$/);
+      if (!m) {
+        this.toast('属性は、「名前」か「名前="値"」の形で書くみたい');
+        return;
+      }
+      const name = m[1].toLowerCase();
+      if (name !== 'contenteditable') {
+        this.toast(`「${name}」は、ここでは使えないみたい`);
+        return;
+      }
+      this.model.setAttr(tag.selector, name, m[2] === undefined || m[2] === '' ? 'true' : m[2]);
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') commit();
+    });
+    input.addEventListener('change', commit);
+    line.append(input, span(`>${this.model.texts.get(tag.selector) ?? tag.text}${tag.close}`, 'tag'));
+    return line;
   }
 
   private rule(pre: HTMLElement, r: Rule) {

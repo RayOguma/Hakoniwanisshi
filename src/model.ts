@@ -30,6 +30,11 @@ export interface Area {
   css: Rule[];
   /** はじめてソースでこの場所を見たときの、主人公の声（日記を読んで思うこと） */
   notice?: Line[];
+  /**
+   * 属性を書き足せるタグ（問題で開いたあとだけ）。html の line 行目が、open（例: <div class="sign"）＋属性＋ > ＋字＋ close になる。
+   * 字は、ページで打ち換えたものを出す
+   */
+  tag?: { line: number; selector: string; open: string; text: string; close: string };
 }
 
 /** 書き換えの前の値（「元に戻す」に使う） */
@@ -38,6 +43,12 @@ export type Snapshot = Record<string, Prop[]>;
 export class PageModel {
   areas: Area[];
   opened = new Set<string>();
+  /** HTML のタグに書き足した属性（例: .sign → contenteditable=true） */
+  attrs = new Map<string, Map<string, string>>();
+  /** ページの上で打ち換えた字（例: .sign → どうぞ） */
+  texts = new Map<string, string>();
+  /** 属性を書き足せるようになったタグ */
+  attrSlots = new Set<string>();
   private initial: Snapshot;
   private listeners: ((rule: Rule, prop: string) => void)[] = [];
 
@@ -82,6 +93,26 @@ export class PageModel {
     if (!r) return;
     r.props = r.props.filter((p) => !(p.name === prop && p.added));
     this.emit(r, prop);
+  }
+
+  attr(selector: string, name: string): string | undefined {
+    return this.attrs.get(selector)?.get(name);
+  }
+
+  setAttr(selector: string, name: string, value: string) {
+    if (!this.attrs.has(selector)) this.attrs.set(selector, new Map());
+    this.attrs.get(selector)!.set(name, value);
+    this.emit({ selector, props: [] }, `@${name}`);
+  }
+
+  removeAttr(selector: string, name: string) {
+    this.attrs.get(selector)?.delete(name);
+    this.emit({ selector, props: [] }, `@${name}`);
+  }
+
+  setText(selector: string, text: string) {
+    this.texts.set(selector, text);
+    this.emit({ selector, props: [] }, '#text');
   }
 
   /** 場所ごとに、はじめの形に戻す */

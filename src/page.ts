@@ -2,11 +2,13 @@
 // 住人は角の丸い CSS の立方体。ページの中を縦横無尽に歩きまわり、進む方向に顔を向ける。話すと、こちらを向く
 import type { PageModel } from './model';
 import { CARDS, LINKS, POSTS } from './site';
-import { RESIDENTS, roofFixed, type Resident, type ResId } from './story';
+import { laneOpen, RESIDENTS, roofFixed, type Resident, type ResId } from './story';
 
 const S = 46; // 立方体の大きさ
 /** しゃべる子に寄るときの拡大 */
 const ZOOM = 1.22;
+/** 小道の生け垣の太さ */
+const HEDGE = 13;
 /** 上から見下ろす角度（頭のてっぺんと、進む方向の面が見える） */
 const TILT = -58;
 
@@ -64,6 +66,22 @@ nav span.on { border-color: #e8a0b8; color: #5a4a3e; }
   content: ''; position: absolute; left: 50%; top: 100%; width: 8px; height: 40px; margin: 3px 0 0 -4px;
   background: #b89a72; border-radius: 0 0 3px 3px;
 }
+/* 看板が、字を打ち換えられるようになったとき（contenteditable） */
+.sign[contenteditable='true'] { cursor: text; outline: 3px dashed #f2b84a; outline-offset: 4px; }
+.sign[contenteditable='true']:focus { outline-style: solid; }
+/* 生け垣の小道。看板のうしろから、ページの右の端を越えて、外まで続く。開くまでは、奥のほうがかすんで見える */
+.lane { position: absolute; left: 0; top: 0; pointer-events: none; }
+.lane .hedge {
+  position: absolute; left: 0; right: 0; height: ${HEDGE}px; border-radius: 9px;
+  background: radial-gradient(circle at 8px 7px, #7fb27a 6px, transparent 6.5px) 0 0 / 16px 14px, #5f9a5c;
+}
+.lane .hedge.top { top: 0; }
+.lane .hedge.bottom { bottom: 0; }
+.lane .floor {
+  position: absolute; left: 0; right: 0; top: ${HEDGE}px; bottom: ${HEDGE}px;
+  background: repeating-linear-gradient(90deg, rgba(180, 150, 110, 0.18) 0 10px, transparent 10px 22px), #efe4cf;
+}
+.lane.closed { -webkit-mask-image: linear-gradient(90deg, #000 45%, rgba(0, 0, 0, 0.18)); mask-image: linear-gradient(90deg, #000 45%, rgba(0, 0, 0, 0.18)); }
 /* クロスは、吹き出しのかわりに、小さな看板（札）をひょこっと出す */
 .bubble.board {
   padding: 4px 12px; background: #f6eedc; border: 3px solid #b89a72; border-radius: 5px;
@@ -207,6 +225,8 @@ export class Page {
   private rain: HTMLElement;
   private castle: HTMLElement;
   private sign!: HTMLElement;
+  /** 生け垣の小道（看板のうしろから、ページの外まで） */
+  private lane = div('lane closed');
   /** しゃべっている子に寄るときの、拡大の割合（1 はふつう） */
   private zoom = 1;
   /** ワーカーが走る道（お堀のまわり）。お城の位置から作る @keyframes run */
@@ -263,7 +283,9 @@ export class Page {
       <footer>visitors <span class="counter">000127</span> ・ 最終更新 2012/02/</footer>
     `;
     this.world = div('world');
-    this.world.append(this.page, this.bubbleLayer);
+    this.lane.append(div('hedge top'), div('floor'), div('hedge bottom'));
+    // 小道は、ページの上、住人の下（看板は z-index で、小道より手前）
+    this.world.append(this.page, this.lane, this.bubbleLayer);
     this.root.append(this.world);
     this.fillSections();
     for (const n of this.page.querySelectorAll<HTMLElement>('nav span')) {
@@ -275,6 +297,17 @@ export class Page {
     this.rain = this.page.querySelector('.rain')!;
     this.castle = this.page.querySelector('.castle')!;
     this.sign = this.page.querySelector('.sign')!;
+    // 看板の字を、ページの上で打ち換える（contenteditable のとき）。Enter か、ほかの所をクリックしたら決まる
+    this.sign.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.sign.blur();
+      }
+    });
+    this.sign.addEventListener('blur', () => {
+      const t = (this.sign.textContent ?? '').trim();
+      if (t !== (this.model.texts.get('.sign') ?? '立入禁止')) this.model.setText('.sign', t);
+    });
     for (let i = 0; i < 6; i++) {
       const d = document.createElement('i');
       d.style.left = `${(i * 7) % 40}px`;
@@ -469,6 +502,7 @@ export class Page {
 
   /** その位置に行けないか（お堀があるあいだ、マージはお城から出られず、ほかの子はお城に入れない） */
   private blocked(m: Mover, x: number, y: number) {
+    if (this.inLaneWall(x, y)) return true;
     const isl = this.castleBox();
     if (!isl.river) return false;
     if (m.r.id === 'm') {
@@ -477,6 +511,14 @@ export class Page {
     }
     const pad = 6;
     return x + S > isl.x - pad && x < isl.x + isl.w + pad && y + S > isl.y - pad && y < isl.y + isl.h + pad;
+  }
+
+  /** 生け垣の小道に、ぶつかるか（閉じているあいだは小道ぜんぶ、開いたら上と下の生け垣だけ） */
+  private inLaneWall(x: number, y: number) {
+    const l = this.laneBox();
+    const hit = (rx: number, ry: number, rw: number, rh: number) => x + S > rx && x < rx + rw && y + S > ry && y < ry + rh;
+    if (!l.open) return hit(l.x, l.y, l.w, l.h);
+    return hit(l.x, l.y, l.w, HEDGE) || hit(l.x, l.y + l.h - HEDGE, l.w, HEDGE);
   }
 
   /** ワーカーの道: お城（お堀）のまわりを、角を落とした四角で、ぐるっと1周（同じ速さで走るよう、長さで割りふる） */
@@ -503,6 +545,24 @@ export class Page {
     const g = this.gardenBox();
     const el = this.sign;
     return { x: g.x + el.offsetLeft, y: g.y + el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
+  }
+
+  /** 生け垣の小道の位置（看板の右から、世界の右の端まで）。open は、通れるか */
+  private laneBox() {
+    const s = this.signBox();
+    const x = s.x + s.w - 8;
+    return { x, y: s.y - 2, w: this.world.clientWidth - 6 - x, h: S + 12 + HEDGE * 2, open: laneOpen(this.model) };
+  }
+
+  /** 小道を、看板に合わせて置く（ページの幅が変わると、看板も動く） */
+  private placeLane() {
+    const l = this.laneBox();
+    const st = this.lane.style;
+    st.left = `${l.x}px`;
+    st.top = `${l.y}px`;
+    st.width = `${l.w}px`;
+    st.height = `${l.h}px`;
+    this.lane.classList.toggle('closed', !l.open);
   }
 
   /** 二人が近くにいるか（かけあいをするか）。隠れている子・話している子は、だめ */
@@ -532,6 +592,7 @@ export class Page {
     const W = this.world.clientWidth - S;
     const H = this.world.clientHeight - S;
     this.followCastle();
+    this.placeLane();
     this.placeBubbles();
     for (const m of this.movers.values()) {
       if (m.r.id === 'w') {
@@ -566,7 +627,8 @@ export class Page {
         const v = Math.min(dist, speed * dt);
         const nx = m.x + (dx / dist) * v;
         const ny = m.y + (dy / dist) * v;
-        if (this.blocked(m, nx, ny) && !this.blocked(m, m.x, m.y)) {
+        // 演出で決まった所へ歩いているとき（goal があるとき）は、ぶつからない（途中で止まって、着いたことにならないように）
+        if (!m.goal && this.blocked(m, nx, ny) && !this.blocked(m, m.x, m.y)) {
           // お堀に行きあたった。そこで止まって、べつの所へ行く
           m.tx = m.x;
           m.ty = m.y;
@@ -692,6 +754,12 @@ export class Page {
     this.makeRunPath();
     // 屋根がずれているか、傾いていると、雨もり
     this.rain.style.display = roofFixed(this.model) ? 'none' : '';
+    // 看板の属性（contenteditable）と、打ち換えた字
+    const editable = this.model.attr('.sign', 'contenteditable') === 'true';
+    if (editable) this.sign.setAttribute('contenteditable', 'true');
+    else this.sign.removeAttribute('contenteditable');
+    const text = this.model.texts.get('.sign') ?? '立入禁止';
+    if (document.activeElement !== this.root.host || this.root.activeElement !== this.sign) this.sign.textContent = text;
     // 住人どうし・住人と物の重なりの順番は、ページの CSS の z-index で決まる（住人の箱ごと、その順番にする）
     for (const m of this.movers.values()) {
       const z = getComputedStyle(m.body).zIndex;
@@ -789,6 +857,11 @@ export class Page {
       b.style.left = `${p.x + S / 2}px`;
       b.style.top = `${p.y - 14}px`;
     }
+  }
+
+  /** 看板（カーソルの合図を出すため） */
+  signEl(): HTMLElement {
+    return this.sign;
   }
 
   /** 住人の要素（カーソルの合図を出すため） */
@@ -899,6 +972,28 @@ export class Page {
       o.rush = undefined;
       o.hold = false;
       o.wait = 2;
+    }
+    if (name === 'overflowRuns') {
+      // オーバーフローが、小道の奥（ページの外）まで走っていく
+      const o = this.movers.get('o')!;
+      const l = this.laneBox();
+      const to: [number, number] = [l.x + l.w - S - 30, l.y + HEDGE + 6];
+      o.hold = true;
+      if (instant) {
+        [o.x, o.y] = to;
+        [o.tx, o.ty] = to;
+        return;
+      }
+      // まず小道の入り口まで行って、それから奥へ
+      o.rush = 200;
+      await new Promise<void>((done) => {
+        [o.tx, o.ty] = [l.x - S + 4, l.y + HEDGE + 6];
+        o.goal = done;
+      });
+      [o.tx, o.ty] = to;
+      o.goal = () => (o.rush = undefined);
+      // 道の真ん中を過ぎたら、次のせりふへ（オーバーフローは、そのまま奥まで走る）
+      while (o.x < l.x + l.w / 2 && o.goal) await sleep(100);
     }
     if (name === 'uptimeFound') {
       // アップタイムが看板の前に出てきて、目をさまし、看板の裏から出てくる

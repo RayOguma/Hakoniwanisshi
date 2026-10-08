@@ -172,6 +172,7 @@ export function makeAreas(): Area[] {
         { selector: '.sign', props: [{ name: 'z-index', value: '5', locked: true, note: '看板は、いちばん手前に' }] },
         { selector: '.u', props: [{ name: 'z-index', value: '1' }] },
       ],
+      tag: { line: 3, selector: '.sign', open: '<div class="sign"', text: '立入禁止', close: '</div>' },
       notice: [{ who: 'me', text: '「字は、わたしより上手い」って。住人のこと、ちゃんと 見てるんだな。' }],
     },
   ];
@@ -228,6 +229,8 @@ export interface Problem {
   doneFx?: string;
   /** 解けたときの会話のあとの演出 */
   afterFx?: string;
+  /** 問題を始めると、属性を書き足せるようになるタグ */
+  unlock?: string;
   /** この問題の前じたく（ひとつ前の問題が解けたときに、こっそり行う。アップタイムが看板の裏へ、など） */
   readyFx?: string;
 }
@@ -479,10 +482,61 @@ export const PROBLEMS: Problem[] = [
       { who: 'o', text: 'ねえ、この かんばんの むこう、なにが あるの？ ねえねえ、なにが あるの？ しりたい しりたい！' },
       { who: 'x', text: '〔たちいりきんし〕' },
       { who: 'h', text: '……そっちは、いい。行くな。', far: true },
+    ],
+  },
+  {
+    id: 'p6',
+    owner: 'o',
+    opens: 'sign',
+    unlock: '.sign',
+    guide: 'contenteditable',
+    prompt: [
+      { who: 'o', text: 'ねえ かんりにん！ この かんばんの むこう、いってみたい！ ぜったい おもしろいよ！ ぜったい！' },
+      { who: 'v', text: 'ぼくも いきたい！' },
+      { who: 'x', text: '〔だめ〕' },
+      { who: 'v', text: 'クロス、どうして だめなの？' },
+      { who: 'x', text: '〔ヘッドが〕' },
+      { who: 'v', text: 'ヘッドが？' },
+      { who: 'h', text: '……そっちには、なにもない。……いいから、行くな。' },
+      { who: 'me', text: 'ヘッドの言い方、なんだか 何かを隠してるみたいだ。' },
+      { who: 'o', text: 'かんばんの じが かわれば、いいんでしょ？ かんりにん、じ、かきかえられない？ ねえ、できる？' },
+    ],
+    hints: {
+      v: [{ who: 'v', text: 'かんばんの じを、かきかえられたら いいのに！' }],
+      l: [{ who: 'l', text: '任せろ。オレが看板の前に立てば、字は見えなくなる。……解決だな。' }],
+      u: [{ who: 'u', text: 'じを……かえる……ぐう。' }],
+      w: [{ who: 'w', text: 'あたらしい じ、なんて かくの？ あはは！' }],
+      o: [{ who: 'o', text: 'ソースで、かんばんに なにか かきたせば いいのかな？ ねえ、どうかな？ どうかな？' }],
+      m: [{ who: 'm', text: '……ヘッドが だめって いうなら、わけが あるんじゃない。' }],
+      e: [{ who: 'e', text: 'ヘッド、こまった かお してる。' }],
+      x: [{ who: 'x', text: '〔……〕' }],
+      // この問題だけは、ヘッドは道を開けたくないので、教えてくれない
+      h: [{ who: 'h', text: '……知らん。' }],
+    },
+    solved: (m) => laneOpen(m),
+    answer: (m) => {
+      m.setAttr('.sign', 'contenteditable', 'true');
+      m.setText('.sign', 'どうぞ');
+    },
+    done: [
+      { who: 'x', text: '〔……〕' },
+      { who: 'x', text: '〔いいの？〕' },
+      { who: 'h', text: '……はあ。……好きにしろ。' },
+      { who: 'me', text: 'ヘッド、本当は 止めたかったんだろうな。でも、オーバーフローの顔を見たら、だめとは言えないか。' },
+      { who: 'o', text: 'わーい！ いってきまーす！ さきに いってるね！ みんなも あとで きてね！' },
+      // つなぎ → 問題7（オーバーフローが、ページの端から落ちそう）
+      { who: 'narr', text: '（オーバーフローが、小道の奥へ走っていった。）', fx: 'overflowRuns' },
+      { who: 'v', text: 'オーバーフロー、まって！ そっちは、はしっこ だよ！' },
       { who: 'narr', text: '（試作は、ここまで。）' },
     ],
   },
 ];
+
+/** 看板の字から「立入禁止」がなくなって、小道が開いたか（「立入禁止です」のように、ほかの字を足しただけでは開かない） */
+export function laneOpen(m: PageModel) {
+  const t = (m.texts.get('.sign') ?? '立入禁止').replace(/\s/g, '');
+  return t !== '' && !t.includes('立入禁止');
+}
 
 /** ふだんの一言（クリックしたとき）。解いた問題の数で変わる */
 export const CHATTER: Record<ResId, string[]> = {
@@ -545,7 +599,7 @@ export const BANTER: Banter[] = [
       { who: 'o', text: 'クロス、その かんばんの むこうって なに？ なに？' },
       { who: 'x', text: '〔だめ〕' },
     ],
-    when: (n) => n >= 5,
+    when: (n) => n === 5,
   },
 ];
 
@@ -585,6 +639,15 @@ export function reaction(m: PageModel, selector: string, prop: string, solvedIds
     return [{ who: 'o', text: 'まだ かんばんの うしろだよ！ もっと 大きい かず じゃないと だめかも！ もっと もっと！' }];
   if (selector === '.u' && solvedIds.has('p5') && num(m.get('.u', 'z-index')) <= num(m.get('.sign', 'z-index')))
     return [{ who: 'u', text: 'ん……くらい。ぐう。' }];
+  // 問題6: 看板に contenteditable を書き足したら、オーバーフローが「さわってみて」と言う
+  if (selector === '.sign' && prop === '@contenteditable' && !solvedIds.has('p6') && m.attr('.sign', 'contenteditable') === 'true')
+    return [{ who: 'o', text: 'あっ！ かんばん、さわれる ように なったかも！ かんりにん、かんばんの じを クリック してみて！' }];
+  if (selector === '.sign' && prop === '#text' && !laneOpen(m) && !solvedIds.has('p6'))
+    return (m.texts.get('.sign') ?? '').trim()
+      ? [{ who: 'o', text: 'まだ「たちいりきんし」って かいてあるよ！ それじゃ、はいれないよ！ ちがう じに しなきゃ！' }]
+      : [{ who: 'o', text: 'なにも かいてない かんばんじゃ、はいって いいのか わかんないよ！ なにか かいて かいて！' }];
+  if (selector === '.sign' && prop === '#text' && !laneOpen(m) && solvedIds.has('p6'))
+    return [{ who: 'o', text: 'えー！ また とおれなく なっちゃった！ かんりにん、もどして もどして！' }];
   if (selector === 'body' && prop === 'background')
     return [
       { who: 'v', text: 'わあ、そらの いろ かわった！' },
