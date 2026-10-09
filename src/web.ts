@@ -221,8 +221,11 @@ export const ARTICLES: Article[] = [
   {
     id: 'border',
     title: '線を引く・消す（border）',
-    body: '`border` は、まわりの線です。`border: 2px solid #333;` で線を引き、`border: none;` で消せます。',
-    code: '.box {\n  border: none;\n}',
+    body: [
+      '`border` は、まわりの線です。`border: 2px solid #333;` で線を引き、`border: none;` で消せます。',
+      '片側だけに線を引くこともできます。右は `border-right`、左は `border-left`、上は `border-top`、下は `border-bottom` です。書き方は「太さ 線の形 色」の順で、`solid` はふつうの線です。',
+    ].join('\n\n'),
+    code: '/* まわりの線を消す */\n.box {\n  border: none;\n}\n\n/* 右の端にだけ、線を引く */\n.box {\n  border-right: 4px solid #5f9a5c;\n}',
   },
   {
     id: 'display',

@@ -2,7 +2,7 @@
 // 住人は角の丸い CSS の立方体。ページの中を縦横無尽に歩きまわり、進む方向に顔を向ける。話すと、こちらを向く
 import type { PageModel } from './model';
 import { CARDS, LINKS, POSTS } from './site';
-import { laneOpen, RESIDENTS, roofFixed, type Resident, type ResId } from './story';
+import { fenceUp, laneOpen, RESIDENTS, roofFixed, type Resident, type ResId } from './story';
 
 const S = 46; // 立方体の大きさ
 /** しゃべる子に寄るときの拡大 */
@@ -81,6 +81,8 @@ nav span.on { border-color: #e8a0b8; color: #5a4a3e; }
   position: absolute; left: 0; right: 0; top: ${HEDGE}px; bottom: ${HEDGE}px;
   background: repeating-linear-gradient(90deg, rgba(180, 150, 110, 0.18) 0 10px, transparent 10px 22px), #efe4cf;
 }
+/* 小道の右の端の柵は、ページの CSS の border-right（問題7）。生け垣と同じくらい、角を丸く */
+.lane { border-radius: 0 9px 9px 0; transition: border-color 0.4s ease; }
 .lane.closed { -webkit-mask-image: linear-gradient(90deg, #000 45%, rgba(0, 0, 0, 0.18)); mask-image: linear-gradient(90deg, #000 45%, rgba(0, 0, 0, 0.18)); }
 /* クロスは、吹き出しのかわりに、小さな看板（札）をひょこっと出す */
 .bubble.board {
@@ -146,6 +148,21 @@ footer { margin-top: 26px; text-align: center; font-size: 11px; color: #b0a498; 
 .res.idle .hop { animation: sway 2.6s ease-in-out infinite; }
 @keyframes hop { 50% { transform: translateY(-5px); } }
 @keyframes sway { 50% { transform: translateY(-2px) scale(1.02, 0.98); } }
+/* 道の端で、落ちそうになって、左右に揺れる（オーバーフロー、問題7） */
+.res.teeter .hop { transform-origin: 50% 100%; animation: teeter 0.9s ease-in-out infinite; }
+@keyframes teeter { 0%, 100% { transform: rotate(-12deg); } 50% { transform: rotate(14deg) translateX(3px); } }
+/* 眠くなると、首（頭）が横に傾く（v。アップタイムの癖が、うつった） */
+.res.sleepy .hop { transform-origin: 50% 100%; animation: nod 3.2s ease-in-out infinite; }
+@keyframes nod { 0%, 100% { transform: rotate(-16deg); } 50% { transform: rotate(-25deg) translateY(1px); } }
+/* 夜。住人の上にかぶせる（吹き出しよりは下） */
+.night {
+  position: absolute; inset: 0; z-index: 50; pointer-events: none; opacity: 0; transition: opacity 2.6s ease;
+  background: radial-gradient(circle at var(--lx, 50%) var(--ly, 300px), rgba(255, 220, 150, 0.16), transparent 220px), rgba(30, 38, 78, 0.42);
+}
+.night.on { opacity: 1; }
+/* 乾杯で、みんないっせいに跳ねる */
+.res.cheer .hop { animation: cheer 0.45s ease-out 2; }
+@keyframes cheer { 50% { transform: translateY(-16px); } }
 .cube { position: relative; width: ${S}px; height: ${S}px; transform-style: preserve-3d; transition: transform 0.35s ease; }
 .f {
   position: absolute; inset: 0; background: currentColor; border-radius: 11px;
@@ -215,6 +232,8 @@ interface Mover {
   asleep?: boolean;
   /** ワーカーの、前の位置（向きを決めるため） */
   last?: { x: number; y: number };
+  /** 歩く速さ（ふだんの速さを変えるとき。ワーカーが自由に歩くようになったら、など） */
+  speed?: number;
 }
 
 export class Page {
@@ -249,6 +268,14 @@ export class Page {
   private castleAt: { x: number; y: number } | null = null;
   /** マージとエコーが会えた（問題4のあと）。二人いっしょに歩く */
   private together = false;
+  /** ワーカーが、お堀のまわりを走るのをやめて、ほかの子と同じように歩く（夜1から） */
+  private workerFree = false;
+  /** オーバーフローが、小道のいちばん端にいる（問題6のあと〜問題7）。ページの幅が変わっても、端についていく */
+  private overflowAtEdge = false;
+  /** おいかけっこで、カーソルを追いかけている子 */
+  private chasers = new Set<string>();
+  /** 夜（幕間A のあと） */
+  private nightEl = div('night');
 
   constructor(
     host: HTMLElement,
@@ -285,7 +312,7 @@ export class Page {
     this.world = div('world');
     this.lane.append(div('hedge top'), div('floor'), div('hedge bottom'));
     // 小道は、ページの上、住人の下（看板は z-index で、小道より手前）
-    this.world.append(this.page, this.lane, this.bubbleLayer);
+    this.world.append(this.page, this.lane, this.nightEl, this.bubbleLayer);
     this.root.append(this.world);
     this.fillSections();
     for (const n of this.page.querySelectorAll<HTMLElement>('nav span')) {
@@ -347,7 +374,7 @@ export class Page {
     if (!dx) return;
     const W = this.world.clientWidth - S;
     for (const m of this.movers.values()) {
-      if (m.r.id === 'w' || m.r.id === 'm' || m.r.id === 'e') continue;
+      if ((m.r.id === 'w' && !this.workerFree) || m.r.id === 'm' || m.r.id === 'e') continue;
       m.x = clamp(m.x + dx, 0, W);
       m.tx = clamp(m.tx + dx, 0, W);
       this.draw(m);
@@ -554,6 +581,18 @@ export class Page {
     return { x, y: s.y - 2, w: this.world.clientWidth - 6 - x, h: S + 12 + HEDGE * 2, open: laneOpen(this.model) };
   }
 
+  /** 小道のいちばん端（オーバーフローが立つ所） */
+  private edgeSpot(): [number, number] {
+    const l = this.laneBox();
+    return [l.x + l.w - S - 14, l.y + HEDGE + 6];
+  }
+
+  /** 端にいるオーバーフローは、柵がないあいだ、ゆらゆら揺れる */
+  private teeter() {
+    const o = this.movers.get('o')!;
+    o.el.classList.toggle('teeter', this.overflowAtEdge && !fenceUp(this.model));
+  }
+
   /** 小道を、看板に合わせて置く（ページの幅が変わると、看板も動く） */
   private placeLane() {
     const l = this.laneBox();
@@ -570,8 +609,8 @@ export class Page {
     const ma = this.movers.get(a);
     const mb = this.movers.get(b);
     if (!ma || !mb || ma.hidden || mb.hidden || this.talking.has(a) || this.talking.has(b)) return false;
-    const pa = a === 'w' ? this.workerPos(ma) : ma;
-    const pb = b === 'w' ? this.workerPos(mb) : mb;
+    const pa = this.pos(ma);
+    const pb = this.pos(mb);
     return Math.hypot(pa.x - pb.x, pa.y - pb.y) < dist;
   }
 
@@ -593,9 +632,13 @@ export class Page {
     const H = this.world.clientHeight - S;
     this.followCastle();
     this.placeLane();
+    if (this.overflowAtEdge) {
+      const o = this.movers.get('o')!;
+      if (!o.goal) [o.x, o.y, o.tx, o.ty] = [...this.edgeSpot(), ...this.edgeSpot()];
+    }
     this.placeBubbles();
     for (const m of this.movers.values()) {
-      if (m.r.id === 'w') {
+      if (m.r.id === 'w' && !this.workerFree) {
         this.stepWorker(m);
         continue;
       }
@@ -606,8 +649,16 @@ export class Page {
         continue;
       }
       // カーソルを追いかける子は、カーソルがページの中にある間、毎こまカーソルを目指す（遠いほど速く）。そばまで来たら止まる
-      const chasing = !!(m.r.follows && this.mouse && !m.hold);
-      if (chasing) {
+      const game = this.chasers.has(m.r.id) && !!this.mouse;
+      const chasing = !!((m.r.follows || game) && this.mouse && !m.hold && !this.isNight());
+      if (game) {
+        // オーバーフローは、カーソルの、さらに先を目指す（いつも行きすぎる）
+        const over = m.r.id === 'o' ? 0.7 : 0;
+        const gx = this.mouse!.x - S / 2;
+        const gy = this.mouse!.y - S / 2;
+        m.tx = clamp(gx + (gx - m.x) * over, 0, W);
+        m.ty = clamp(gy + (gy - m.y) * over, 0, H);
+      } else if (chasing) {
         const cx = clamp(this.mouse!.x - S / 2, 0, W);
         const cy = clamp(this.mouse!.y + 16, 0, H);
         const far = Math.hypot(cx - m.x, cy - m.y);
@@ -623,7 +674,8 @@ export class Page {
       const dy = m.ty - m.y;
       const dist = Math.hypot(dx, dy);
       if (dist > 2) {
-        const speed = m.rush ?? (chasing ? Math.min(320, m.r.speed + dist * 1.6) : m.r.speed);
+        // おいかけっこでは、v は少しゆっくり、オーバーフローは速いけれど、いつも行きすぎる（カーソルの先を目指す）
+        const speed = m.rush ?? (game ? (m.r.id === 'o' ? 260 : 185) : chasing ? Math.min(320, m.r.speed + dist * 1.6) : (m.speed ?? m.r.speed));
         const v = Math.min(dist, speed * dt);
         const nx = m.x + (dx / dist) * v;
         const ny = m.y + (dy / dist) * v;
@@ -648,7 +700,8 @@ export class Page {
           g();
         }
         m.wait -= dt;
-        if (m.wait <= 0 && !m.hold) this.nextTarget(m, W, H);
+        // 夜は、みんな その場で休む（新しい所へは歩きださない）
+        if (m.wait <= 0 && !m.hold && !this.isNight()) this.nextTarget(m, W, H);
       }
       this.draw(m);
     }
@@ -692,6 +745,13 @@ export class Page {
     }
     // カーソルを追いかける子は、カーソルがページの中にある間は、step で追いかける
     if (m.r.follows && this.mouse) return;
+    // ヘッドは、カーソルに少しついてきて、途中でやめる（日記 2009/08/11）
+    if (id === 'h' && this.mouse && Math.random() < 0.3) {
+      m.tx = clamp(m.x + (this.mouse.x - S / 2 - m.x) * 0.3, 0, W);
+      m.ty = clamp(m.y + (this.mouse.y - S / 2 - m.y) * 0.3, 0, H);
+      m.wait = 2.5 + Math.random() * 2;
+      return;
+    }
     // ヘッドは、家のまわりにいることが少し多い
     if (id === 'h' && Math.random() < 0.3) {
       const g = this.gardenBox();
@@ -710,6 +770,25 @@ export class Page {
   private wake(m: Mover, awake: boolean) {
     m.asleep = !awake;
     m.faceText.textContent = awake ? '・u・' : '-u-';
+  }
+
+  /** その子の、いまの位置（お堀のまわりを走っているワーカーは、CSS のアニメーションの位置） */
+  private pos(m: Mover) {
+    return m.r.id === 'w' && !this.workerFree ? this.workerPos(m) : { x: m.x, y: m.y };
+  }
+
+  /** ワーカーが、お堀のまわりを走るのをやめて、ほかの子と同じように歩くようになる（いまいる所から） */
+  private freeWorker() {
+    if (this.workerFree) return;
+    const m = this.movers.get('w')!;
+    const p = this.workerPos(m);
+    // ページの CSS の animation（走る道）より、こちらが勝つ
+    m.body.style.animation = 'none';
+    [m.x, m.y] = [p.x, p.y];
+    [m.tx, m.ty] = [p.x, p.y];
+    m.speed = 90; // 配達係なので、ほかの子より少し速い
+    this.workerFree = true;
+    this.draw(m);
   }
 
   /** ワーカーのいまの位置（CSS のアニメーションの位置） */
@@ -744,7 +823,9 @@ export class Page {
 
   private drawCube(m: Mover) {
     const talking = this.talking.has(m.r.id);
-    m.cube.style.transform = talking ? 'rotateX(-14deg) rotateY(0deg)' : `rotateX(${TILT}deg) rotateY(${m.angle}deg)`;
+    // 首を傾けて寝ている v は、顔をこちらに向ける（寝顔が見えるように）
+    const front = talking || (m.r.id === 'v' && m.asleep);
+    m.cube.style.transform = front ? 'rotateX(-14deg) rotateY(0deg)' : `rotateX(${TILT}deg) rotateY(${m.angle}deg)`;
   }
 
   /** ページの CSS を当て直す（プレイヤーが書き換えたとき） */
@@ -760,6 +841,7 @@ export class Page {
     else this.sign.removeAttribute('contenteditable');
     const text = this.model.texts.get('.sign') ?? '立入禁止';
     if (document.activeElement !== this.root.host || this.root.activeElement !== this.sign) this.sign.textContent = text;
+    this.teeter();
     // 住人どうし・住人と物の重なりの順番は、ページの CSS の z-index で決まる（住人の箱ごと、その順番にする）
     for (const m of this.movers.values()) {
       const z = getComputedStyle(m.body).zIndex;
@@ -776,7 +858,7 @@ export class Page {
     }
     const m = this.movers.get(id);
     if (!m) return;
-    const p = id === 'w' ? this.workerPos(m) : { x: m.x, y: m.y };
+    const p = this.pos(m);
     const cx = p.x + S / 2;
     const cy = p.y + S / 2;
     // 下は会話の窓に隠れるので、画面の上から 4 割くらいの所に来るように送る
@@ -853,7 +935,7 @@ export class Page {
   private placeBubbles() {
     for (const [id, b] of this.bubbles) {
       const m = this.movers.get(id)!;
-      const p = id === 'w' ? this.workerPos(m) : m;
+      const p = this.pos(m);
       b.style.left = `${p.x + S / 2}px`;
       b.style.top = `${p.y - 14}px`;
     }
@@ -867,6 +949,66 @@ export class Page {
   /** 住人の要素（カーソルの合図を出すため） */
   residentEl(id: ResId): HTMLElement {
     return this.movers.get(id)!.el;
+  }
+
+  /** 少しのあいだ、首を傾けて、うとうとする（v） */
+  sleepy(id: string, ms: number) {
+    const m = this.movers.get(id);
+    if (!m || m.asleep) return;
+    m.el.classList.add('sleepy');
+    setTimeout(() => {
+      if (!m.asleep) m.el.classList.remove('sleepy');
+    }, ms);
+  }
+
+  /**
+   * おいかけっこ（幕間A）。ids の子が、カーソルを追いかける。だれかがカーソルにさわったら、その子の id を返す。
+   * ms のあいだ逃げきったら 'escaped'（カーソルがページの外にあるあいだは、時間を数えない）
+   */
+  async chase(ids: string[], ms: number): Promise<string> {
+    this.scrollTo('home');
+    for (const id of ids) {
+      const m = this.movers.get(id)!;
+      m.hold = false;
+      m.goal = undefined;
+      this.chasers.add(id);
+    }
+    this.bubble('v', 'まてまてー！', 2400);
+    let left = ms;
+    let who = 'escaped';
+    while (left > 0) {
+      await sleep(50);
+      if (!this.mouse) continue;
+      left -= 50;
+      const hit = ids.find((id) => {
+        const m = this.movers.get(id)!;
+        return Math.hypot(m.x + S / 2 - this.mouse!.x, m.y + S / 2 - this.mouse!.y) < 20;
+      });
+      if (hit) {
+        who = hit;
+        break;
+      }
+    }
+    this.chasers.clear();
+    for (const id of ids) {
+      const m = this.movers.get(id)!;
+      [m.tx, m.ty] = [m.x, m.y];
+      m.wait = 2;
+    }
+    return who;
+  }
+
+  /** 夜になったとき: 演出で歩いている子のほかは、その場で止まる */
+  private settle() {
+    for (const m of this.movers.values()) {
+      if (m.goal) continue;
+      [m.tx, m.ty] = [m.x, m.y];
+    }
+  }
+
+  /** いま夜か */
+  isNight() {
+    return this.nightEl.classList.contains('on');
   }
 
   isAsleep(id: string) {
@@ -977,7 +1119,7 @@ export class Page {
       // オーバーフローが、小道の奥（ページの外）まで走っていく
       const o = this.movers.get('o')!;
       const l = this.laneBox();
-      const to: [number, number] = [l.x + l.w - S - 30, l.y + HEDGE + 6];
+      const to = this.edgeSpot();
       o.hold = true;
       if (instant) {
         [o.x, o.y] = to;
@@ -994,6 +1136,157 @@ export class Page {
       o.goal = () => (o.rush = undefined);
       // 道の真ん中を過ぎたら、次のせりふへ（オーバーフローは、そのまま奥まで走る）
       while (o.x < l.x + l.w / 2 && o.goal) await sleep(100);
+    }
+    if (name === 'overflowTeeters') {
+      // 小道のいちばん端で、落ちそうになって、ゆらゆら揺れる（柵ができるまで）
+      const o = this.movers.get('o')!;
+      if (!instant) while (o.goal) await sleep(100);
+      this.overflowAtEdge = true;
+      this.teeter();
+    }
+    if (name === 'fenceUp') {
+      // 道の端に柵が出て、オーバーフローの揺れが止まる（柵が見える所まで送る）
+      if (instant) return;
+      this.scrollTo('home');
+      await sleep(1200);
+    }
+    if (name === 'overflowBack') {
+      // オーバーフローが、小道を戻ってくる
+      const o = this.movers.get('o')!;
+      const l = this.laneBox();
+      this.overflowAtEdge = false;
+      this.teeter();
+      const to: [number, number] = [l.x - S - 40, l.y + HEDGE + 70];
+      if (instant) {
+        [o.x, o.y] = to;
+        [o.tx, o.ty] = to;
+        o.hold = false;
+        return;
+      }
+      o.rush = 120;
+      await new Promise<void>((done) => {
+        [o.tx, o.ty] = [l.x - S + 4, l.y + HEDGE + 6];
+        o.goal = done;
+      });
+      [o.tx, o.ty] = to;
+      o.goal = () => {
+        o.rush = undefined;
+        o.hold = false;
+        o.wait = 2;
+      };
+    }
+    if (name === 'party') {
+      // 1日目の夜。みんなで、ヘッドの家の前に輪になって集まる（マージとエコーも、ここから二人で歩けるようになる）
+      await this.fx('together', instant);
+      // ワーカーも、走るのをやめて、みんなの所へ来る（ここからは、ほかの子と同じように歩く）
+      this.freeWorker();
+      const g = this.gardenBox();
+      const cx = g.x + g.w / 2 - S / 2;
+      const cy = g.y + 236;
+      this.nightEl.style.setProperty('--lx', `${cx + S / 2}px`);
+      this.nightEl.style.setProperty('--ly', `${cy + S / 2}px`);
+      this.nightEl.classList.add('on');
+      this.settle();
+      const ring = ['h', 'v', 'w', 'l', 'u', 'm', 'e'];
+      ring.forEach((id, i) => {
+        const m = this.movers.get(id)!;
+        const a = (i / ring.length) * Math.PI * 2 - Math.PI / 2;
+        const [x, y] = [cx + Math.cos(a) * 92, cy + Math.sin(a) * 58];
+        m.hold = true;
+        m.hidden = false;
+        if (instant) [m.x, m.y] = [x, y];
+        [m.tx, m.ty] = [x, y];
+        m.rush = 110;
+        // 演出で決まった所へ歩くので、ぶつからない。着いたら、輪のまんなかを向く
+        const face = (Math.atan2(cx - x, cy - y) * 180) / Math.PI;
+        m.goal = () => {
+          m.rush = undefined;
+          m.angle = nearAngle(m.angle, face);
+        };
+        if (instant) m.angle = face;
+      });
+      if (!instant) {
+        this.scrollTo('home');
+        await sleep(2600);
+      }
+    }
+    if (name === 'cheer') {
+      if (instant) return;
+      for (const m of this.movers.values()) m.el.classList.add('cheer');
+      await sleep(1000);
+      for (const m of this.movers.values()) m.el.classList.remove('cheer');
+    }
+    if (name === 'nextDay') {
+      // 次の日の朝（暗転のあいだに呼ぶ）。夜が明けて、みんな また歩きだす。アップタイムは、いつのまにか看板の裏で寝ている
+      this.nightEl.classList.remove('on');
+      for (const id of ['h', 'v', 'w', 'l', 'm', 'e']) {
+        const m = this.movers.get(id)!;
+        m.hold = false;
+        m.goal = undefined;
+        m.rush = id === 'e' ? 40 : undefined; // エコーは、ふだんの速さが 0 なので
+        m.wait = 1.5 + Math.random() * 2;
+        m.asleep = false;
+        m.el.classList.remove('sleepy');
+        if (id === 'v') m.faceText.textContent = m.r.face;
+      }
+      await this.fx('uptimeHides', true);
+    }
+    if (name === 'night') {
+      // 日が暮れる。アップタイムは軒下で寝て、v は、そのとなりで眠れずにいる（夜2）。ヘッドは、庭のはしを見回っている
+      const g = this.gardenBox();
+      const eaves: [number, number] = [g.x + g.w / 2 + 52, g.y + 132];
+      const spots: [string, number, number][] = [
+        ['u', eaves[0], eaves[1]],
+        ['v', eaves[0] + S + 10, eaves[1] + 6],
+        ['h', g.x + 70, g.y + 290],
+      ];
+      this.nightEl.style.setProperty('--lx', `${eaves[0]}px`);
+      this.nightEl.style.setProperty('--ly', `${eaves[1]}px`);
+      this.nightEl.classList.add('on');
+      this.settle();
+      for (const [id, x, y] of spots) {
+        const m = this.movers.get(id)!;
+        m.hold = true;
+        m.hidden = false;
+        if (instant) [m.x, m.y] = [x, y];
+        [m.tx, m.ty] = [x, y];
+        m.rush = 110;
+        // 演出で決まった所へ歩くので、ぶつからない
+        m.goal = () => {
+          m.rush = undefined;
+        };
+      }
+      const u = this.movers.get('u')!;
+      this.wake(u, false);
+      if (!instant) {
+        this.scrollTo('home');
+        await sleep(2400);
+      }
+    }
+    if (name === 'vSleeps') {
+      // v が、アップタイムのとなりで、首を傾けて眠る。見回りのヘッドが、二人のそばへ来て、二人のほうを向く
+      const v = this.movers.get('v')!;
+      v.asleep = true;
+      v.el.classList.add('sleepy');
+      v.faceText.textContent = '-v-'; // 目をつむる
+      const h = this.movers.get('h')!;
+      const u = this.movers.get('u')!;
+      const to: [number, number] = [u.x - S - 40, u.y + 24];
+      if (instant) {
+        [h.x, h.y] = to;
+        [h.tx, h.ty] = to;
+        h.angle = 90;
+        return;
+      }
+      await sleep(1200);
+      h.rush = 60;
+      await new Promise<void>((done) => {
+        [h.tx, h.ty] = to;
+        h.goal = done;
+      });
+      h.rush = undefined;
+      h.angle = nearAngle(h.angle, 90);
+      await sleep(600);
     }
     if (name === 'uptimeFound') {
       // アップタイムが看板の前に出てきて、目をさまし、看板の裏から出てくる

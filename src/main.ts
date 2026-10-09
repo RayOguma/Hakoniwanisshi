@@ -2,10 +2,12 @@
 // 検索エンジンで「箱庭日誌」を見つける → 住人たちに「おかえり」と迎えられる → ページの CSS を書き換えて直していく
 import './style.css';
 import { Dialog } from './dialog';
-import { PageModel } from './model';
+import { Menu } from './menu';
+import { applySettings } from './settings';
+import { PageModel, type ModelSave } from './model';
 import { Page } from './page';
 import { SourcePanel } from './source';
-import { BANTER, CHATTER, INTRO, makeAreas, MUTTER, NET_FOUND, NET_LATER, NET_START, PROBLEMS, reaction, RESIDENTS, type Line, type ResId } from './story';
+import { BANTER, CHATTER, INTRO, makeAreas, MUTTER, NET_FOUND, NET_LATER, NET_START, ONCE_TALK, PROBLEMS, reaction, RESIDENTS, type Line, type Problem, type ResId } from './story';
 import { GuideView, RESULTS_CSS, RESULTS_FIRST, RESULTS_OLD, SearchView, yourTurn } from './web';
 
 const model = new PageModel(makeAreas());
@@ -22,6 +24,7 @@ const noticed = new Set<string>(); // 主人公が、日記を読んでひとこ
 /** 看板を打ち換えられるようになったとき、看板に出すカーソルの合図を止める関数 */
 let stopSignHint: (() => void) | null = null;
 let skipping = false; // 開発用: 途中から始めるために、前の問題を解いた形にしているところ
+const onceDone = new Set<string>(); // もう流した、一度だけの会話（ONCE_TALK）
 
 const $ = (id: string) => document.getElementById(id)!;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -63,6 +66,11 @@ const dialog = new Dialog(
       return;
     }
     page?.focus(null);
+    // 「次の日」は、暗転して字を出し、暗いあいだに朝にする
+    if (fx === 'nextDay') {
+      await fade('― 次の日 ―', () => page?.fx('nextDay'));
+      return;
+    }
     await page?.fx(fx);
   },
 );
@@ -92,11 +100,14 @@ for (const tab of document.querySelectorAll<HTMLButtonElement>('.tab')) {
   });
 }
 
-async function fade(text: string) {
+/** 暗転して、字を出す。whileDark は、暗いあいだに行うこと（朝にする、など） */
+async function fade(text: string, whileDark?: () => Promise<void> | undefined) {
   const f = $('fade');
   $('fade-text').textContent = text;
   f.classList.add('on');
-  await sleep(2600);
+  await sleep(1300);
+  await whileDark?.();
+  await sleep(1300);
   f.classList.remove('on');
   await sleep(900);
 }
@@ -246,6 +257,12 @@ async function talk(id: ResId) {
   stopFirstTouch?.();
   stopFirstTouch = null;
   const p = PROBLEMS[current];
+  if (p && !started && id === p.owner && p.scene) {
+    started = true;
+    refreshMark();
+    await playScene(p);
+    return;
+  }
   if (p && !started && id === p.owner) {
     started = true;
     refreshMark();
@@ -262,7 +279,7 @@ async function talk(id: ResId) {
     }
     reopen();
     if (p.unlock) model.attrSlots.add(p.unlock);
-    openArea(p.opens);
+    if (p.opens) openArea(p.opens);
     void maybeNotice();
     return;
   }
@@ -270,8 +287,35 @@ async function talk(id: ResId) {
     await play(p.hints[id]!);
     return;
   }
+  // 一度だけの会話（v の名前のこと、など）。まだ流していないものがあれば、ふだんの一言のかわりに
+  const once = ONCE_TALK.find((o) => o.who === id && solved.size >= o.when && !onceDone.has(o.id));
+  if (once) {
+    onceDone.add(once.id);
+    await play(once.lines);
+    return;
+  }
   const lines = CHATTER[id];
   await play([{ who: id, text: lines[Math.min(solved.size, lines.length - 1)] }]);
+}
+
+/** 幕間: はじまりの会話 → （遊ぶ）→ 終わりの会話。終わったら、日記の場所が開く */
+async function playScene(p: Problem) {
+  dialog.busy = true;
+  await closeSourceForTalk();
+  await play(p.prompt);
+  if (p.play === 'chase' && page) {
+    dialog.busy = true; // おいかけっこのあいだは、住人をクリックしても話さない
+    toast('カーソルを動かして、にげよう！');
+    const who = await page.chase(['v', 'o'], 9000);
+    dialog.busy = false;
+    const lines = p.playLines?.[who];
+    if (lines) await play(lines);
+  }
+  await trySolve();
+  if (p.opens) {
+    openArea(p.opens);
+    void maybeNotice();
+  }
 }
 
 // ---- ページを書き換えたとき ----
@@ -336,8 +380,8 @@ async function solveWhenFree() {
 let bantering = false;
 setInterval(() => {
   if (!page || !introDone || dialog.busy || bantering || Math.random() < 0.35) return;
-  // 近くにいる二人がいたら、ときどき、かけあい
-  const pairs = BANTER.filter((b) => (!b.when || b.when(solved.size)) && page!.near(b.pair[0], b.pair[1], 130));
+  // 近くにいる二人がいたら、ときどき、かけあい（夜のあいだは、しない）
+  const pairs = page.isNight() ? [] : BANTER.filter((b) => (!b.when || b.when(solved.size)) && page!.near(b.pair[0], b.pair[1], 130));
   if (pairs.length && Math.random() < 0.6) {
     void banter(pairs[Math.floor(Math.random() * pairs.length)].lines);
     return;
@@ -345,8 +389,15 @@ setInterval(() => {
   const ids = (Object.keys(MUTTER) as ResId[]).filter((id) => page!.shown(id));
   const id = ids[Math.floor(Math.random() * ids.length)];
   const lines = MUTTER[id];
-  page.bubble(id, lines[Math.floor(Math.random() * lines.length)]);
+  const text = lines[Math.floor(Math.random() * lines.length)];
+  page.bubble(id, text);
+  nod(id, text);
 }, 4500);
+
+/** v が眠そうなことを言ったら、少しのあいだ、首を傾けて、うとうとする */
+function nod(id: ResId, text: string) {
+  if (id === 'v' && /ねむく|ねてない/.test(text)) page?.sleepy('v', 3800);
+}
 
 /** かけあいを、吹き出しで順に出す */
 async function banter(lines: { who: ResId; text: string }[]) {
@@ -354,6 +405,7 @@ async function banter(lines: { who: ResId; text: string }[]) {
   for (const l of lines) {
     if (dialog.busy) break;
     page?.bubble(l.who, l.text, 2600);
+    nod(l.who, l.text);
     await sleep(1900);
   }
   bantering = false;
@@ -368,7 +420,10 @@ function devFrom(): Promise<number> {
   const sel = document.createElement('select');
   sel.id = 'tt-from';
   sel.append(new Option('はじまりから', '0'));
-  PROBLEMS.forEach((p, i) => sel.append(new Option(`問題${i + 1}から（${RESIDENTS.find((r) => r.id === p.owner)?.face}）`, String(i + 1))));
+  PROBLEMS.forEach((p, i) => {
+    const face = RESIDENTS.find((r) => r.id === p.owner)?.face;
+    sel.append(new Option(`${i + 1}. ${p.scene ? '幕間' : '問題'}から（${face}）`, String(i + 1)));
+  });
   try {
     sel.value = localStorage.getItem(DEV_KEY) ?? '0';
   } catch {
@@ -376,7 +431,7 @@ function devFrom(): Promise<number> {
   }
   const label = Object.assign(document.createElement('label'), { className: 'tt-dev' });
   label.append('開発用：', sel);
-  $('tt-start').after(label);
+  $('tt-settings').after(label);
   return new Promise((done) =>
     $('tt-start').addEventListener(
       'click',
@@ -393,8 +448,73 @@ function devFrom(): Promise<number> {
   );
 }
 
-/** 開発用: 前の問題をぜんぶ解いた形にして、問題 from（1から数える）の「!」が出たところから始める */
-async function devStart(from: number) {
+// ---- セーブ ----
+// ブラウザに1つだけ記録する。読みこむときは、前の問題をぜんぶ解いた形にしてから（startFrom）、セーブした値に戻す
+const SAVE_KEY = 'hakoniwa-save';
+interface SaveData {
+  v: 1;
+  /** セーブした日時 */
+  at: string;
+  /** いまの問題（PROBLEMS の番号） */
+  current: number;
+  /** いまの問題を、話しかけて始めていたか */
+  started: boolean;
+  solved: string[];
+  onceDone: string[];
+  noticed: string[];
+  guideFound: boolean;
+  sourceButton: boolean;
+  model: ModelSave;
+}
+
+function readSave(): SaveData | null {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    const d = raw ? (JSON.parse(raw) as SaveData) : null;
+    return d?.v === 1 ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+/** セーブする。できなかったときは、そのわけを返す */
+function saveGame(): string | null {
+  if (!introDone || !page) return 'まだ セーブできないみたい。箱庭日誌のページに入ってから、セーブできます。';
+  if (dialog.busy) return '会話のあいだは、セーブできないみたい。会話が終わってから、もう一度ためしてね。';
+  const data: SaveData = {
+    v: 1,
+    at: new Date().toISOString(),
+    current,
+    started,
+    solved: [...solved],
+    onceDone: [...onceDone],
+    noticed: [...noticed],
+    guideFound,
+    sourceButton: !$('btn-source').hidden,
+    model: model.dump(),
+  };
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  } catch {
+    return 'セーブできませんでした（このブラウザでは、記録できないみたい）。';
+  }
+  return null;
+}
+
+const menu = new Menu($('btn-menu'), {
+  save: saveGame,
+  // ホーム（タイトル画面）に戻る。開発用の ?start=… は外す
+  home: () => (location.href = location.pathname),
+});
+applySettings();
+// タイトル画面の「設定」（はじめる前に、音や文字を変えたい人のため）
+$('tt-settings').addEventListener('click', () => menu.settings(true));
+
+/**
+ * 前の問題をぜんぶ解いた形にして、問題 from（1から数える）の「!」が出たところから始める。
+ * 開発用の「何問目から」と、セーブの「つづきから」（save があるとき）で使う
+ */
+async function startFrom(from: number, save?: SaveData) {
   $('title').remove();
   showTab('site');
   page = new Page($('site'), $('site-wrap'), model, { talk: (id) => void talk(id) });
@@ -402,8 +522,10 @@ async function devStart(from: number) {
   skipping = true;
   openArea('top');
   for (const p of PROBLEMS.slice(0, from - 1)) {
-    model.opened.add(p.opens);
-    noticed.add(p.opens);
+    if (p.opens) {
+      model.opened.add(p.opens);
+      noticed.add(p.opens);
+    }
     if (p.unlock) model.attrSlots.add(p.unlock);
     if (p.readyFx) await page.fx(p.readyFx, true);
     // 問題を始めたときの演出（オーバーフローが来る、など）も、済んだ形にする
@@ -411,34 +533,55 @@ async function devStart(from: number) {
     p.answer(model);
     solved.add(p.id);
     if (p.doneFx) await page.fx(p.doneFx, true);
+    // 解けたあとの会話の中の演出（夜になる、など）も、済んだ形にする
+    for (const l of p.done) if ('fx' in l && l.fx) await page.fx(l.fx, true);
     if (p.afterFx) await page.fx(p.afterFx, true);
   }
-  skipping = false;
+  // 一度だけの会話は、もう済んだことにする（前の問題のあいだに流れるはずだったもの）
+  for (const o of ONCE_TALK) if (o.when < from - 1) onceDone.add(o.id);
   const cur = PROBLEMS[from - 1];
-  if (cur.readyFx) await page.fx(cur.readyFx, true);
+  if (cur?.readyFx) await page.fx(cur.readyFx, true);
+  if (save) {
+    // セーブした値に戻す（解いたあとに自分で書き換えた所・一度だけの会話・読んだ日記など）
+    model.load(save.model);
+    for (const id of save.onceDone) onceDone.add(id);
+    for (const id of save.noticed) noticed.add(id);
+    // 問題を始めたところでセーブしていたら、始めた形にする（ソースの場所が開き、ヒントが聞ける）
+    if (save.started && cur) {
+      for (const l of cur.prompt) if ('fx' in l && l.fx) await page.fx(l.fx, true);
+      if (cur.unlock) model.attrSlots.add(cur.unlock);
+      if (cur.opens) model.opened.add(cur.opens);
+      started = true;
+    }
+  }
+  skipping = false;
   page.applyCss();
   source.render();
   introDone = true;
   current = from - 1;
-  if (from > 1) {
+  if (from > 1 || save?.guideFound) {
     // 問題1で済ませた「はじめてのこと」（解説サイト・ソースのボタン）も、済んだ形にする
     guideFound = true;
     document.querySelector<HTMLElement>('.tab[data-tab="guide"]')!.hidden = false;
     $('btn-source').hidden = false;
   }
+  if (save?.sourceButton) $('btn-source').hidden = false;
   refreshMark();
 }
 
 // ---- はじまり ----
 async function start() {
   source.render();
-  // タイトル画面（仮）
-  if (import.meta.env.DEV) {
-    const from = await devFrom();
-    if (from > 0) return devStart(from);
-  } else {
-    await new Promise((r) => $('tt-start').addEventListener('click', r, { once: true }));
-  }
+  // タイトル画面（仮）。セーブがあれば「つづきから」も出す
+  const save = readSave();
+  $('tt-continue').hidden = !save;
+  const picked = await new Promise<number | 'continue'>((done) => {
+    $('tt-continue').addEventListener('click', () => done('continue'), { once: true });
+    if (import.meta.env.DEV) void devFrom().then(done);
+    else $('tt-start').addEventListener('click', () => done(0), { once: true });
+  });
+  if (picked === 'continue') return startFrom(save!.current + 1, save!);
+  if (picked > 0) return startFrom(picked);
   $('title').classList.add('out');
   await sleep(1000);
   $('title').remove();

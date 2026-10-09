@@ -1,4 +1,5 @@
 // 会話の窓。ブラウザの下に重ねて出す。クリック・スペース・Enter で次へ。選択肢はボタン（選んだものだけの会話もある）
+import { settings, SPEED_CPS } from './settings';
 import { resident, type Choice, type Line, type Who } from './story';
 
 /** ログに残す1行（選択肢で選んだものは choice） */
@@ -49,7 +50,7 @@ export class Dialog {
     }
   }
 
-  private say(who: Who, text: string, far?: boolean): Promise<void> {
+  private async say(who: Who, text: string, far?: boolean): Promise<void> {
     this.onSpeaker(who === 'narr' || who === 'me' ? null : who, far, text);
     this.log.push({ who, text });
     this.el.replaceChildren(this.logButton());
@@ -80,6 +81,7 @@ export class Dialog {
     next.className = 'dlg-next';
     next.textContent = '▼';
     this.el.append(body, next);
+    await typeOut(this.el, body);
     return waitNext(this.el, () => !!this.logEl);
   }
 
@@ -193,6 +195,56 @@ export class Dialog {
 export function codeMarks(text: string): string {
   const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return esc.replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+/**
+ * せりふの字を、1文字ずつ出す（設定の「文字の速さ」）。クリック・スペース・Enter で、残りを一度に出す。
+ * `コード` の枠などのタグはそのままで、中の字だけを少しずつ出す
+ */
+function typeOut(el: HTMLElement, body: HTMLElement): Promise<void> {
+  const cps = SPEED_CPS[settings.speed];
+  if (!cps) return Promise.resolve();
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  const parts: { node: Text; text: string }[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) parts.push({ node: n as Text, text: n.textContent ?? '' });
+  for (const p of parts) p.node.textContent = '';
+  const total = parts.reduce((a, p) => a + p.text.length, 0);
+  const next = el.querySelector<HTMLElement>('.dlg-next');
+  if (next) next.style.visibility = 'hidden';
+  return new Promise((done) => {
+    let shown = 0;
+    let skip = false;
+    const start = performance.now();
+    const draw = (count: number) => {
+      let left = count;
+      for (const p of parts) {
+        p.node.textContent = p.text.slice(0, Math.max(0, left));
+        left -= p.text.length;
+      }
+    };
+    const onClick = () => (skip = true);
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key === ' ' || e.key === 'Enter') && !(e.target instanceof HTMLInputElement)) {
+        e.preventDefault();
+        skip = true;
+      }
+    };
+    el.addEventListener('click', onClick);
+    document.addEventListener('keydown', onKey);
+    const tick = (now: number) => {
+      shown = skip ? total : Math.min(total, Math.floor(((now - start) / 1000) * cps));
+      draw(shown);
+      if (shown < total) {
+        requestAnimationFrame(tick);
+        return;
+      }
+      el.removeEventListener('click', onClick);
+      document.removeEventListener('keydown', onKey);
+      if (next) next.style.visibility = '';
+      done();
+    };
+    requestAnimationFrame(tick);
+  });
 }
 
 /** 次のせりふへ進むのを待つ。paused が true のあいだ（ログを見ているあいだ）は、進まない */

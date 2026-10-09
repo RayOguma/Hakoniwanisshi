@@ -40,6 +40,15 @@ export interface Area {
 /** 書き換えの前の値（「元に戻す」に使う） */
 export type Snapshot = Record<string, Prop[]>;
 
+/** セーブするページの形 */
+export interface ModelSave {
+  css: Snapshot;
+  attrs: [string, [string, string][]][];
+  texts: [string, string][];
+  opened: string[];
+  attrSlots: string[];
+}
+
 export class PageModel {
   areas: Area[];
   opened = new Set<string>();
@@ -123,6 +132,27 @@ export class PageModel {
       r.props = structuredClone(this.initial[r.selector]);
       this.emit(r, '*');
     }
+  }
+
+  /** セーブ用に、いまの形を書き出す（CSS の値・書き足した属性・打ち換えた字・開いた場所） */
+  dump(): ModelSave {
+    return {
+      css: this.snapshot(),
+      attrs: [...this.attrs].map(([sel, m]) => [sel, [...m]]),
+      texts: [...this.texts],
+      opened: [...this.opened],
+      attrSlots: [...this.attrSlots],
+    };
+  }
+
+  /** セーブした形に戻す（ページへの反映は、呼んだ側で行う） */
+  load(d: ModelSave) {
+    for (const a of this.areas)
+      for (const r of a.css) if (d.css[r.selector]) r.props = structuredClone(d.css[r.selector]);
+    this.attrs = new Map(d.attrs.map(([sel, kv]) => [sel, new Map(kv)]));
+    this.texts = new Map(d.texts);
+    this.opened = new Set(d.opened);
+    this.attrSlots = new Set(d.attrSlots);
   }
 
   private emit(r: Rule, prop: string) {

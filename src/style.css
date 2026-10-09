@@ -150,12 +150,12 @@ input[readonly] {
   width: min(640px, calc(100% - 24px));
   min-height: 88px;
   padding: 18px 22px 18px;
-  background: rgba(255, 255, 255, 0.97);
+  background: #fff;
   border: 2px solid #333;
   border-radius: 14px;
   box-shadow: 0 6px 0 rgba(0, 0, 0, 0.15);
   font-family: var(--round);
-  font-size: 17px;
+  font-size: calc(17px * var(--text-scale, 1));
   line-height: 1.6;
   cursor: var(--cur-hand);
   z-index: 10;
@@ -297,7 +297,7 @@ input[readonly] {
   color: #667;
 }
 .log-text {
-  font-size: 15px;
+  font-size: calc(15px * var(--text-scale, 1));
   line-height: 1.7;
   color: #333;
 }
@@ -578,7 +578,9 @@ input.pval:focus {
   letter-spacing: 0.25em;
   color: #a0948a;
 }
-#tt-start {
+#tt-start,
+#tt-continue,
+#tt-settings {
   margin-top: 36px;
   border: 2px solid var(--accent);
   background: #fff;
@@ -590,7 +592,9 @@ input.pval:focus {
   box-shadow: 0 4px 20px rgba(200, 90, 134, 0.18);
   transition: transform 0.15s;
 }
-#tt-start:hover {
+#tt-start:hover,
+#tt-continue:hover,
+#tt-settings:hover {
   transform: translateY(-2px);
 }
 .tt-note {
@@ -1055,4 +1059,184 @@ input.pval:focus {
   .sg-results {
     padding-left: 40px;
   }
+}
+
+/* タイトル画面のボタンは、同じ幅にそろえる */
+#tt-start,
+#tt-continue,
+#tt-settings {
+  min-width: 220px;
+}
+/* つづきから（セーブがあるときだけ出る） */
+#tt-continue {
+  margin-top: 8px;
+}
+#tt-continue[hidden] {
+  display: none;
+}
+
+/* メニュー（「ソースを見る」の横） */
+#btn-menu {
+  margin-left: 6px;
+}
+#menu {
+  position: fixed;
+  inset: 0;
+  z-index: 960;
+  display: grid;
+  place-items: center;
+  background: rgba(30, 28, 36, 0.45);
+  animation: fadein 0.2s ease;
+}
+.menu-panel {
+  width: min(520px, calc(100% - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 2px solid #333;
+  border-radius: 14px;
+  overflow: hidden;
+  font-family: var(--round);
+}
+.menu-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e4e0da;
+  font-size: 15px;
+  font-weight: bold;
+  color: #555;
+}
+.menu-head .menu-btn {
+  padding: 2px 10px;
+  font-size: 12px;
+}
+.menu-body {
+  overflow: auto;
+  padding: 16px 20px 20px;
+  font-size: 15px;
+  color: #333;
+}
+.menu-body p {
+  margin: 0 0 10px;
+  line-height: 1.7;
+}
+.menu-note {
+  font-size: 13px;
+  color: #888;
+}
+.menu-list {
+  display: grid;
+  gap: 10px;
+}
+.menu-big {
+  display: grid;
+  gap: 2px;
+  padding: 12px 16px;
+  border: 2px solid #e4ddd2;
+  border-radius: 12px;
+  background: #faf8f4;
+  text-align: left;
+  font-family: var(--round);
+  transition: border-color 0.15s, background 0.15s;
+}
+.menu-big:hover,
+.menu-big:focus-visible {
+  border-color: var(--accent);
+  background: #fff6fa;
+  outline: none;
+}
+.menu-big b {
+  font-size: 16px;
+  color: #4a4540;
+}
+.menu-big span {
+  font-size: 12px;
+  color: #8a7e74;
+}
+.menu-row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+.menu-btn {
+  border: 1px solid #bbb;
+  border-radius: 8px;
+  background: #f6f4f0;
+  padding: 6px 18px;
+  font-family: var(--round);
+  font-size: 14px;
+}
+.menu-btn.main {
+  border-color: var(--accent);
+  background: #fff6fa;
+  color: #c85a86;
+}
+.menu-set {
+  display: grid;
+  grid-template-columns: 7.5em 1fr 2.5em;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.menu-set .menu-seg {
+  grid-column: 2 / 4;
+}
+.menu-label {
+  font-size: 14px;
+  color: #555;
+}
+.menu-val {
+  text-align: right;
+  font-size: 13px;
+  color: #888;
+}
+.menu-set input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.menu-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.menu-seg button {
+  flex: 1;
+  min-width: 3.5em;
+  padding: 5px 8px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  font-family: var(--round);
+  font-size: 13px;
+}
+.menu-seg button.on {
+  border-color: var(--accent);
+  background: #fff0f6;
+  color: #c85a86;
+  font-weight: bold;
+}
+.menu-howto {
+  margin: 0;
+}
+.menu-howto dt {
+  margin-top: 10px;
+  font-weight: bold;
+  color: #c85a86;
+}
+.menu-howto dt:first-child {
+  margin-top: 0;
+}
+.menu-howto dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* タイトル画面の「設定」（はじめる前にも、音や文字を変えられる）。大きさは「はじめる」とそろえる */
+#tt-settings {
+  margin-top: 8px;
 }
