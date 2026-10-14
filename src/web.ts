@@ -88,11 +88,39 @@ export const RESULTS_CSS: Result[] = [
   { id: 'i', title: '水彩画で「透け感」を出すコツ', url: 'suisai-kyoshitsu.example.com', snippet: '色を重ねすぎないこと。紙の白を、生かしましょう。' },
 ];
 
+/** 「さくさくサーバー サービス終了」の検索結果（問題10。主人公が、帯の字が本当かどうかを確かめる） */
+export const RESULTS_SERVER: Result[] = [
+  { id: 'server', title: 'さくさくサーバー｜かんたん・はやい レンタルサーバー', url: 'www.example.ne.jp', snippet: '【重要】個人ホームページサービス 終了のお知らせ。長らくのご愛顧、ありがとうございました。' },
+  { id: 'news', title: 'さくさくサーバー、個人ホームページサービスを 3月31日に終了｜ITニュース', url: 'it-news.example.com', snippet: '老舗レンタルサーバーの「さくさくサーバー」は、個人向けホームページサービスを 3月31日に終了する。利用者の減少のため。終了後、公開中のページは すべて削除される。' },
+  { id: 'b', title: '【悲報】さくさくサーバー、ついに終了へ', url: 'matome-ya.example.com', snippet: '「まだやってたのか」「昔、ここでホームページ作ってた」「カウンターとか 懐かしい」' },
+  { id: 'c', title: 'さくさくサーバー終了。ホームページの引っ越し先は？', url: 'hikkoshi-navi.example.jp', snippet: 'ページのファイルを保存して、ほかのサーバーへ移す方法をまとめました。容量の上限に 注意しましょう。' },
+  { id: 'd', title: '【掲示板】さくさく終わるってマジ？', url: 'keijiban.example.net', snippet: '>>12 管理人が もう いないページは、そのまま消えるんだろうな' },
+  { id: 'e', title: '消えていく個人サイトたち｜ウェブ考古学', url: 'web-kouko.example.jp', snippet: '無料ホームページサービスの終了が続いている。持ち主が 気づかないまま 消えるページも多い。' },
+  { id: 'f', title: 'さくさくサーバーの評判・口コミ（2011年）', url: 'server-hikaku.example.jp', snippet: '※この記事の情報は古くなっています。' },
+  { id: 'g', title: 'さくさく おやつレシピ｜サクサクのクッキーを焼こう', url: 'okashi-recipe.example.com', snippet: 'バターを しっかり冷やすのが、サクサクに仕上げるコツです。' },
+];
+
+/** 「ホームページ 引っ越し 無料」の検索結果（問題13。主人公が、引っ越し先を探す） */
+export const RESULTS_HOME: Result[] = [
+  { id: 'a', title: 'ホームページの引っ越し、3つの手順｜引っ越しナビ', url: 'hikkoshi-navi.example.jp', snippet: 'ファイルを保存する → 引っ越し先を用意する → ファイルを送る。容量の上限に 注意しましょう。' },
+  { id: 'b', title: '【2026年版】無料レンタルサーバー 比較 10社', url: 'server-hikaku.example.jp', snippet: '※ 個人ホームページ向けの無料プランは、多くが 新規受付を 終了しています。' },
+  { id: 'kotori', title: 'ことりサーバー｜ちいさな ホームページの、ちいさな おうち', url: 'kotori-server.example.net', snippet: '無料・広告なし。ひとつのページにつき、10,000字まで。ひとりで やっている、ちいさな サーバーです。' },
+  { id: 'c', title: 'すごいクラウド｜月額 4,980円〜', url: 'sugoi-cloud.example.com', snippet: '法人さま向け。容量 無制限、24時間サポート。まずは お見積もりを。' },
+  { id: 'd', title: '質問掲示板：亡くなった父のホームページを、残したいのですが', url: 'oshiete.example.com', snippet: '回答 5件 ／ 「ファイルさえ 保存できれば、ほかの場所に 置き直せますよ」' },
+  { id: 'e', title: '引っ越し 無料見積もり｜らくらく引越センター', url: 'rakuraku-hikkoshi.example.jp', snippet: '単身パック 15,000円〜。ピアノの運送も おまかせください。' },
+  { id: 'f', title: 'さくさくサーバー終了。ホームページの引っ越し先は？', url: 'hikkoshi-navi.example.jp', snippet: 'さくさくサーバーの終了を受けて、移転先を まとめました。小さなページなら、個人運営のサーバーも 選べます。' },
+  { id: 'g', title: 'ウェブアーカイブで、消えた個人サイトを探す方法', url: 'archive-sagashi.example.com', snippet: '昔のアドレスさえわかれば、保存された当時のページを見られることがあります。' },
+];
+
 export class SearchView {
   private input: HTMLInputElement;
   private results: HTMLElement;
 
-  constructor(private el: HTMLElement) {
+  constructor(
+    private el: HTMLElement,
+    /** 結果の題名をクリックしたとき（開けるページがある結果だけ、使う） */
+    private onOpen?: (id: string) => void,
+  ) {
     el.innerHTML = `
       <div class="sg">
         <div class="sg-top">
@@ -130,6 +158,7 @@ export class SearchView {
       item.querySelector('.sg-url')!.textContent = r.url;
       item.querySelector('.sg-title')!.textContent = r.title;
       item.querySelector('.sg-snippet')!.textContent = r.snippet;
+      item.querySelector('.sg-title')!.addEventListener('click', () => this.onOpen?.(r.id));
       this.results.append(item);
       await sleep(70);
     }
@@ -242,8 +271,8 @@ export const ARTICLES: Article[] = [
   {
     id: 'transform',
     title: '回す・動かす（transform）',
-    body: '`transform: rotate(90deg);` で、90度回せます。マイナスをつけた `rotate(-11deg)` なら、反対向きに少しだけ傾きます。`translate()` を使うと、決まった量だけ動かせます。回したり傾けたりしたのを元に戻すときは、`transform: none;` と書きます（`rotate(0deg)` でも、まっすぐに戻ります）。',
-    code: '/* 回す */\n.box {\n  transform: rotate(90deg);\n}\n\n/* 元に戻す（回転をなくす） */\n.box {\n  transform: none;\n}',
+    body: '`transform: rotate(90deg);` で、時計回りに90度回せます。マイナスをつけると、反対向き（左回り）です。`rotate(-90deg)` なら左回りに90度、`rotate(-11deg)` なら左へ少しだけ傾きます。`translate()` を使うと、決まった量だけ動かせます。回したり傾けたりしたのを元に戻すときは、`transform: none;` と書きます（`rotate(0deg)` でも、まっすぐに戻ります）。',
+    code: '/* 右回りに回す */\n.box {\n  transform: rotate(90deg);\n}\n\n/* 左回りに回す */\n.box {\n  transform: rotate(-90deg);\n}\n\n/* 元に戻す（回転をなくす） */\n.box {\n  transform: none;\n}',
   },
   {
     id: 'contenteditable',
@@ -257,7 +286,7 @@ export const ARTICLES: Article[] = [
   {
     id: 'comment',
     title: 'コメントを書く（<!-- -->）',
-    body: '`<!--` と `-->` のあいだに書いたものは、ページには表示されません。作った人のメモや、一時的に隠したいものに使います。',
+    body: '`<!--` と `-->` のあいだに書いたものは、ページには表示されません。作った人のメモや、一時的に隠したいものに使います。`<!--` と `-->` を消すと、あいだに書いてあったものが、またページに表示されます。',
     code: '<!-- ここはページに出ません -->',
   },
 ];
@@ -340,4 +369,68 @@ export class GuideView {
 function marks(text: string) {
   const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return esc.replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+// ---- さくさくサーバー（箱庭日誌を置いているレンタルサーバーの会社のページ） ----
+// 箱庭日誌の「リンク」からも、検索結果からも開ける。いちばん上に、サービス終了のお知らせが出ている
+
+export class ServerView {
+  constructor(el: HTMLElement) {
+    el.innerHTML = `
+      <div class="sv">
+        <header class="sv-head">
+          <div class="sv-logo">さくさく<span>サーバー</span></div>
+          <nav><span class="on">ホーム</span><span>サービス</span><span>料金</span><span>サポート</span><span>会社案内</span></nav>
+        </header>
+        <div class="sv-body">
+          <section class="sv-notice">
+            <div class="sv-tag">重要なお知らせ</div>
+            <h1>個人ホームページサービス 終了のお知らせ</h1>
+            <p>平素より、さくさくサーバーをご利用いただき、まことにありがとうございます。</p>
+            <p>2001年より ご提供してまいりました「個人ホームページサービス」は、ご利用者さまの減少にともない、<b>3月31日（あと<span class="days-left">7</span>日）</b>をもちまして、終了させていただくこととなりました。</p>
+            <table>
+              <tr><th>サービス終了日</th><td>3月31日 23時59分</td></tr>
+              <tr><th>対象</th><td>個人ホームページサービス（アドレスが www.example.ne.jp/~ で始まる、すべてのページ）</td></tr>
+              <tr><th>終了後の あつかい</th><td>公開中のページ、および保存されているファイルは、<b>すべて削除</b>されます。削除されたデータは、元に戻せません。</td></tr>
+            </table>
+            <p>長らくのご愛顧、まことにありがとうございました。</p>
+          </section>
+
+          <section class="sv-sec">
+            <h2>ご利用中のお客さまへ</h2>
+            <p>ページを残したい場合は、終了日までに、ページのファイルをお手元に保存し、ほかのサーバーへ お引っ越しください。</p>
+            <ol>
+              <li>ページのファイルを、すべて保存する。</li>
+              <li>引っ越し先のサーバーを用意する（<b>容量の上限</b>に ご注意ください）。</li>
+              <li>ファイルを、引っ越し先へ送る。</li>
+            </ol>
+            <p class="sv-small">※ お引っ越しの作業は、お客さまご自身で 行っていただく必要があります。弊社では、代行いたしかねます。</p>
+          </section>
+
+          <section class="sv-sec">
+            <h2>よくあるご質問</h2>
+            <dl>
+              <dt>Q. 終了のことは、どうやって知らされますか？</dt>
+              <dd>A. ご登録のメールアドレスへ、お知らせを お送りしております。また、対象のページには、お知らせの帯を 自動で表示しております。</dd>
+              <dt>Q. 長いあいだ、更新していないページは どうなりますか？</dt>
+              <dd>A. 更新の有無にかかわらず、終了日に すべて削除されます。</dd>
+              <dt>Q. ページを作った本人と、連絡がつきません。</dt>
+              <dd>A. 申しわけございませんが、ご本人さま以外からの お問い合わせには、お答えできません。</dd>
+              <dt>Q. 終了日を、のばしてもらえませんか？</dt>
+              <dd>A. 終了日の変更は、いたしかねます。</dd>
+            </dl>
+          </section>
+
+          <section class="sv-sec sv-old">
+            <h2>サービスのご案内</h2>
+            <div class="sv-plans">
+              <div class="sv-plan off"><b>個人ホームページ</b><span>無料 ／ 10MB</span><em>新規受付は終了しました</em></div>
+              <div class="sv-plan"><b>ビジネス</b><span>月額 980円〜</span><em>法人さま向け</em></div>
+              <div class="sv-plan"><b>クラウド</b><span>お見積もり</span><em>法人さま向け</em></div>
+            </div>
+          </section>
+        </div>
+        <footer class="sv-foot">© さくさくサーバー株式会社 ／ 最終更新 3月1日</footer>
+      </div>`;
+  }
 }

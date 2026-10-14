@@ -17,7 +17,12 @@
         <button class="tab active" data-tab="search" type="button">🔍 Sagasu</button>
         <button class="tab" data-tab="site" type="button" hidden>🏠 箱庭日誌</button>
         <button class="tab" data-tab="guide" type="button" hidden>📘 やさしいHTML・CSS入門</button>
+        <button class="tab" data-tab="server" type="button" hidden>🖥 さくさくサーバー</button>
+        <button class="tab" data-tab="takao" type="button" hidden>⛰ 高尾山 登山ガイド</button>
+        <button class="tab" data-tab="cafe" type="button" hidden>☕ 喫茶ポプラ</button>
+        <button class="tab" data-tab="kotori" type="button" hidden>🐦 ことりサーバー</button>
         <div class="tab-spacer"></div>
+        <span id="days-chip" hidden>サービス終了まで あと <b class="days-left">7</b> 日</span>
         <button id="btn-source" class="tool" type="button" hidden>&lt;/&gt; ソースを見る <kbd>S</kbd></button>
         <button id="btn-menu" class="tool" type="button">☰ メニュー</button>
       </div>
@@ -29,6 +34,10 @@
           <aside id="source" hidden></aside>
         </div>
         <div id="view-guide" class="view"></div>
+        <div id="view-server" class="view"></div>
+        <div id="view-takao" class="view"></div>
+        <div id="view-cafe" class="view"></div>
+        <div id="view-kotori" class="view"></div>
         <div id="dialog" hidden></div>
         <div id="fade"><div id="fade-text"></div></div>
       </div>

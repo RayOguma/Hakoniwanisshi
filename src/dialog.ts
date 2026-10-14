@@ -1,6 +1,6 @@
 // 会話の窓。ブラウザの下に重ねて出す。クリック・スペース・Enter で次へ。選択肢はボタン（選んだものだけの会話もある）
 import { settings, SPEED_CPS } from './settings';
-import { resident, type Choice, type Line, type Who } from './story';
+import { fill, resident, type Choice, type Line, type Who } from './story';
 
 /** ログに残す1行（選択肢で選んだものは choice） */
 interface LogLine {
@@ -21,6 +21,11 @@ export class Dialog {
     private onSpeaker: (who: Who | null, far?: boolean, text?: string) => void,
     /** せりふの前の演出（屋根がななめになる、など） */
     private onFx: (name: string) => Promise<void>,
+    /**
+     * せりふのあとに行う演出か（暗転して、次の日や夜にするもの）。
+     * 「（夜がふけて…）」のような字を読んでから、暗転するように。ほかの演出は、せりふの前
+     */
+    private fxAfter: (name: string) => boolean = () => false,
   ) {}
 
   async play(lines: Line[]): Promise<void> {
@@ -39,18 +44,23 @@ export class Dialog {
         if (picked.then) await this.run(picked.then);
         continue;
       }
-      if (l.fx) {
+      const after = !!l.fx && this.fxAfter(l.fx);
+      const fx = async () => {
         // 演出のあいだは、だれもこちらを向いて止まっていない（話し手が歩いていけるように）
         this.onSpeaker(null);
         this.el.hidden = true;
-        await this.onFx(l.fx);
+        await this.onFx(l.fx!);
         this.el.hidden = false;
-      }
+      };
+      if (l.fx && !after) await fx();
       await this.say(l.who, l.text, l.far);
+      if (after) await fx();
     }
   }
 
-  private async say(who: Who, text: string, far?: boolean): Promise<void> {
+  private async say(who: Who, raw: string, far?: boolean): Promise<void> {
+    // せりふの中の {v}（v の名前）・{days}（あと何日）を、いまの値にする
+    const text = fill(raw);
     this.onSpeaker(who === 'narr' || who === 'me' ? null : who, far, text);
     this.log.push({ who, text });
     this.el.replaceChildren(this.logButton());
@@ -169,10 +179,11 @@ export class Dialog {
       for (const o of options) {
         const b = document.createElement('button');
         b.type = 'button';
-        b.textContent = o.label;
+        const label = fill(o.label);
+        b.textContent = label;
         b.addEventListener('click', (e) => {
           e.stopPropagation();
-          this.log.push({ who: 'me', text: o.label, choice: true });
+          this.log.push({ who: 'me', text: label, choice: true });
           done(o);
         });
         b.addEventListener('pointerenter', () => pick(b));
