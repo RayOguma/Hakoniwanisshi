@@ -5,6 +5,18 @@
 - 谷を渡る理由を足した: 引っ越しのリンク(戸口)。主人公が、ことりサーバーの手順どおりに、ページのいちばん下(谷の向こうの「工事中」の空き地)に はる。種まきは、引っ越しを伝える場面のヘッド「よそのページへは、リンクから行く」と、ことりサーバーのページの手順の1行
 - ヘッドレスの Chrome で確かめたこと: 夜6 → ことりサーバー → 戸口 → 問題16 → 問題17 → 終わり、の通し。v が残る/ヘッドが残る、の両方。「待って」で戻ること。ほかの字を消すと戻ること。橋の前でセーブ →「つづきから」。終わったあとでセーブ →「つづきから」
 
+- 結末のせりふを2つ直した(リンク「全員、渡ったな。よし、オレも 行く。」/ あなた「みんな、行った。あの子だけが、ページの終わりに 立ったままだ。置いていくみたいで、胸が 痛い。」)
+- テストプレイの準備: `README.md`(遊び方・テストプレイで見てほしい所)。履歴の作者のアドレスを、GitHub の「見せないためのアドレス」に書きかえて、上書きした。GitHub Pages に置く仕組み(`.github/workflows/pages.yml`。main に送ると、ビルドして置く)
+
+## 0. 公開の、残りの手順(GitHub の画面で。ユーザーがやる)
+1. アカウントの Settings → Emails で、「Keep my email addresses private」と「Block command line pushes that expose my email」に印をつける
+2. リポジトリの Settings → General → Danger Zone → Change visibility で、パブリックにする(無料のプランでは、非公開のままだと Pages に置けない)
+3. リポジトリの Settings → Pages → Source を「GitHub Actions」にする
+4. Actions のタブ →「GitHub Pages に置く」→「Run workflow」。2〜3分で https://rayoguma.github.io/Hakoniwanisshi/ で遊べる(GitHub の上で実際に置けるかは、まだ確かめていない。失敗したら、記録を見て直す)
+- 手元に、書きかえる前の履歴の控え(`refs/original/…`。古いアドレス入り)が残っている。GitHub には送られない。消すなら `git update-ref -d refs/original/refs/heads/main` と `git update-ref -d refs/original/refs/remotes/origin/main`
+- パソコン全体の git の設定(`~/.gitconfig`)は、元のアドレスのまま。このリポジトリだけ、見せないためのアドレスにしてある
+- `.claude/settings.json` は、コミットに入れていない
+
 ## 済んだこと(2026-10-13)
 - 問題8「橋のない谷を越えたい」(リンクに「!」。`.l` の `transform` を `rotate(90deg)` にすると、右へ倒れて橋になる)
 - 問題9「v が `>` になって、道を示す」(v に「!」。`.v` に `transform: rotate(-90deg);` を1行書き足す。寝ぼけたアップタイムを、管理人が作った昼寝場所へ連れていく)
