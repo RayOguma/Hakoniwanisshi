@@ -1,0 +1,45 @@
+# main に送るたびに、ビルドして、GitHub Pages に置く
+# （はじめに一度だけ、GitHub の Settings → Pages → Source を「GitHub Actions」にしておく）
+name: GitHub Pages に置く
+
+on:
+  push:
+    branches: [main]
+  # GitHub の画面の「Run workflow」からも、動かせる
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 置いている途中で、次の分が来たら、古いほうは待たせずに、新しいほうだけ置く
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # 型チェックと、ビルド（dist/ にできる）
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

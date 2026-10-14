@@ -10,20 +10,11 @@ HTML や CSS を知らなくても遊べます。書き方は、ゲームの中�
 
 > いまは、テストプレイ用の試作版です。タイトル画面の絵は、仮のものです。
 
-## 遊ぶ準備
+## 遊ぶ
 
-[Node.js](https://nodejs.org/)(22 以上)がいります。
+次のアドレスを、ブラウザで開くだけです。入れる物は、ありません。
 
-```
-git clone https://github.com/RayOguma/Hakoniwanisshi.git
-cd Hakoniwanisshi
-npm install
-npm run dev
-```
-
-ブラウザで http://localhost:5174 を開くと、タイトル画面が出ます。
-
-`npm run dev` で開くと、タイトル画面に「開発用：」という欄が出ます。これは、とちゅうの問題から始めるための、作る人向けの欄です。はじめて遊ぶときは「はじまりから」のまま、「はじめる」を押してください。
+**https://rayoguma.github.io/Hakoniwanisshi/**
 
 ## 遊び方
 
@@ -61,6 +52,16 @@ npm run dev
 
 ## 作る人向け
 
-- `npm run dev` — 開発サーバー(http://localhost:5174)
+[Node.js](https://nodejs.org/)(22.12 以上)がいります。
+
+```
+git clone https://github.com/RayOguma/Hakoniwanisshi.git
+cd Hakoniwanisshi
+npm install
+npm run dev
+```
+
+- `npm run dev` — 開発サーバー(http://localhost:5174)。タイトル画面に「開発用：」の欄が出て、とちゅうの問題から始められます
+- main に送ると、GitHub Actions がビルドして、GitHub Pages に置きます(`.github/workflows/pages.yml`)
 - `npm run build` — 型チェックと、ビルド(`dist/` にできます)
 - 企画は `docs/企画書.md`、決まったことは `docs/シナリオ_はじまり〜問題3.md` にまとめてあります(どちらも、結末まで書いてあります)
